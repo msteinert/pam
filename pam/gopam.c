@@ -5,6 +5,8 @@
 #include "gopam.h"
 #include "_cgo_export.h"
 
+//#cgo LDFLAGS: -lpam
+
 /* Simplification of pam_get_item to remove type ambiguity.  Will never
    be called (promise) with a type that returns anything other than a string */
 get_item_result pam_get_item_string(pam_handle_t *handle, int type) {
