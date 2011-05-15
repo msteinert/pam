@@ -60,6 +60,7 @@ func goPAMConv(msg_style C.int, msg *C.char, appdata unsafe.Pointer) (*C.char,in
 // Transaction is the application's handle for a single PAM transaction.
 type Transaction struct {
     handle *C.pam_handle_t
+    conv *conversation
 }
 
 // Start initiates a new PAM transaction.  serviceName is treated identically
@@ -74,13 +75,19 @@ type Transaction struct {
 // the official PAM documentation.
 func Start(serviceName, user string, handler ConversationHandler) (*Transaction,int) {
     t := &Transaction{}
-    conv := newConversation(handler)
+    t.conv = newConversation(handler)
     var status C.int
     if len(user) == 0 {
-        status = C.pam_start(C.CString(serviceName), nil, conv.cconv, &t.handle)
+        status = C.pam_start(C.CString(serviceName), nil, t.conv.cconv, &t.handle)
     } else {
-        status = C.pam_start(C.CString(serviceName), C.CString(user), conv.cconv, &t.handle)
+        status = C.pam_start(C.CString(serviceName), C.CString(user), t.conv.cconv, &t.handle)
     }
+
+    if status != SUCCESS {
+        C.free(unsafe.Pointer(t.conv.cconv))
+        return nil,int(status)
+    }
+
     return t, int(status)
 }
 
@@ -88,8 +95,12 @@ func Start(serviceName, user string, handler ConversationHandler) (*Transaction,
 // should be set to the value returned by the last PAM library call."
 //
 // This may return SUCCESS, or SYSTEM_ERR.
+//
+// This *must* be called on any Transaction successfully returned by Start() or
+// you will leak memory.
 func (t *Transaction) End(status int) {
     C.pam_end(t.handle, C.int(status))
+    C.free(unsafe.Pointer(t.conv.cconv))
 }
 
 // Sets a PAM informational item.  Legal values of itemType are listed here (excluding Linux extensions):
