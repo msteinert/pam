@@ -4,6 +4,7 @@ package pam
 
 import (
     //#include "gopam.h"
+    //#cgo LDFLAGS: -lpam
     "C"
     "unsafe"
     "strings"
