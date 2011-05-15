@@ -22,7 +22,7 @@ package main
 
 import(
     "fmt"
-    "pam"
+    "github.com/krockot/gopam/pam"
     "os"
     "bufio"
 )
