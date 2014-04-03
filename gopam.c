@@ -2,7 +2,6 @@
 #include <security/pam_appl.h>
 #include <stdlib.h>
 #include <string.h>
-#include "gopam.h"
 #include "_cgo_export.h"
 
 /* Simplification of pam_get_item to remove type ambiguity.  Will never

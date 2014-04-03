@@ -2,7 +2,7 @@
 
 // MACHINE GENERATED - DO NOT EDIT.
 
-package pam
+package gopam
 
 // Constants
 const (

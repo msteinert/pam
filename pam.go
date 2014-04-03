@@ -1,6 +1,6 @@
 // Package pam provides a wrapper for the application layer of the
 // Pluggable Authentication Modules library.
-package pam
+package gopam
 
 import (
     //#include "gopam.h"
@@ -188,7 +188,7 @@ func (t* Transaction) GetEnvList() map[string]string {
     for *(*uintptr)(unsafe.Pointer(list)) != 0 {
         entry := *(*uintptr)(unsafe.Pointer(list))
         nameval := C.GoString((*C.char)(unsafe.Pointer(entry)))
-        chunks := strings.Split(nameval, "=", 2)
+        chunks := strings.SplitN(nameval, "=", 2)
         env[chunks[0]] = chunks[1]
         list += (uintptr)(unsafe.Sizeof(list))
     }
