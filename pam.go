@@ -1,9 +1,9 @@
 // Package pam provides a wrapper for the application layer of the
 // Pluggable Authentication Modules library.
-package gopam
+package pam
 
 import (
-    //#include "gopam.h"
+    //#include "golang-pam.h"
     //#cgo LDFLAGS: -lpam
     "C"
     "unsafe"
