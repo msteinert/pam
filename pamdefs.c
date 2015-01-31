@@ -30,9 +30,25 @@ enum {
     $ABORT = PAM_ABORT,
     $AUTHTOK_EXPIRED = PAM_AUTHTOK_EXPIRED,
     $MODULE_UNKNOWN = PAM_MODULE_UNKNOWN,
+
+#if !defined(PAM_BAD_ITEM)
+    $BAD_ITEM = PAM_SYMBOL_ERR,
+#else
     $BAD_ITEM = PAM_BAD_ITEM,
+#endif
+
+#if !defined(PAM_CONV_AGAIN)
+    $CONV_AGAIN = PAM_SYMBOL_ERR,
+#else
     $CONV_AGAIN = PAM_CONV_AGAIN,
+#endif
+
+#if !defined(PAM_INCOMPLETE)
+    $INCOMPLETE = PAM_SYMBOL_ERR
+#else
     $INCOMPLETE = PAM_INCOMPLETE
+#endif
+
 };
 
 enum {
