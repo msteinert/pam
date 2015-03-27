@@ -1,4 +1,3 @@
-#include <security/pam_types.h>
 #include <security/pam_appl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,7 +24,7 @@ int gopam_conv(int num_msg, const struct pam_message **msg, struct pam_response 
     struct pam_response *responses = (struct pam_response*)malloc(sizeof(struct pam_response) * num_msg);
     memset(responses, 0, sizeof(struct pam_response) * num_msg);
 
-    for(i = 0; i < num_msg; ++i) {
+    for(i = 1; i < num_msg; ++i) {
         const struct pam_message *m = msg[i];
         struct goPAMConv_return result = goPAMConv(m->msg_style, (char*)m->msg, appdata_ptr);
         if(result.r1 == PAM_SUCCESS)
