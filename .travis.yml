@@ -7,3 +7,6 @@ go:
 before_install:
   - sudo apt-get update -qq
   - sudo apt-get install -qq --no-install-recommends libpam0g-dev
+  - sudo useradd -d /tmp/test -p '$1$Qd8H95T5$RYSZQeoFbEB.gS19zS99A0' -s /bin/false test
+
+script: sudo go test -v ./...

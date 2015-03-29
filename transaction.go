@@ -106,7 +106,7 @@ func Start(service, user string, handler ConversationHandler) (*Transaction, err
 	var u *C.char
 	if len(user) != 0 {
 		u = C.CString(user)
-		defer C.free(unsafe.Pointer(s))
+		defer C.free(unsafe.Pointer(u))
 	}
 	t.status = C.pam_start(s, u, t.conv.conv, &t.handle)
 	if t.status != C.PAM_SUCCESS {
