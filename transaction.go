@@ -22,20 +22,16 @@ const (
 	TextInfo            = C.PAM_TEXT_INFO
 )
 
-// Objects implementing the ConversationHandler interface can
-// be registered as conversation callbacks to be used during
-// PAM authentication.  RespondPAM receives a message style
-// (one of PROMPT_ECHO_OFF, PROMPT_ECHO_ON, ERROR_MSG, or
-// TEXT_INFO) and a message string.  It is expected to return
-// a response string and a bool indicating success or failure.
+// Objects implementing the ConversationHandler interface can be registered as
+// conversation callbacks to be used during PAM authentication. RespondPAM
+// receives a message style and a message string. It is expected to return a
+// response string.
 type ConversationHandler interface {
 	RespondPAM(Style, string) (string, error)
 }
 
-// ConversationFunc is an adapter to allow the use of ordinary
-// functions as conversation callbacks. ConversationFunc(f) is
-// a ConversationHandler that calls f, where f must have
-// the signature func(int,string)(string,bool).
+// ConversationFunc is an adapter to allow the use of ordinary functions as
+// conversation callbacks.
 type ConversationFunc func(Style, string) (string, error)
 
 func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
@@ -73,15 +69,14 @@ func cbPAMConv(s C.int, msg *C.char, appdata unsafe.Pointer) (*C.char, C.int) {
 	return C.CString(r), C.PAM_SUCCESS
 }
 
-// Transaction is the application's handle for a single PAM transaction.
+// Transaction is the application's handle for a PAM transaction.
 type Transaction struct {
 	handle *C.pam_handle_t
 	conv   *Conversation
 	status C.int
 }
 
-// Ends a PAM transaction.  From Linux-PAM documentation: "The [status] argument
-// should be set to the value returned by the last PAM library call."
+// Finalize a PAM transaction.
 func TransactionFinalizer(t *Transaction) {
 	C.pam_end(t.handle, t.status)
 	C.free(unsafe.Pointer(t.conv.conv))
@@ -138,13 +133,7 @@ const (
 	UserPrompt      = C.PAM_USER_PROMPT
 )
 
-// Sets a PAM informational item. Legal values of i are listed here
-// (excluding Linux extensions):
-//
-// http://www.kernel.org/pub/linux/libs/pam/Linux-PAM-html/adg-interface-by-app-expected.html#adg-pam_set_item
-//
-// PAM_CONV is not supported in order to simplify the Go API
-// (and due to the fact that it is completely unnecessary).
+// pam_set_item
 func (t *Transaction) SetItem(i Item, item string) error {
 	cs := unsafe.Pointer(C.CString(item))
 	defer C.free(cs)
@@ -155,8 +144,7 @@ func (t *Transaction) SetItem(i Item, item string) error {
 	return nil
 }
 
-// Gets a PAM item. Legal values of itemType are as specified by the
-// documentation of SetItem.
+// pam_get_item
 func (t *Transaction) GetItem(i Item) (string, error) {
 	var s unsafe.Pointer
 	t.status = C.pam_get_item(t.handle, C.int(i), &s)
@@ -254,11 +242,7 @@ func (t *Transaction) GetEnv(name string) string {
 	return C.GoString(value)
 }
 
-// GetEnvList internally calls pam_getenvlist and then uses some very
-// dangerous code to pull out the returned environment data and mash
-// it into a map[string]string. This call may be safe, but it hasn't
-// been tested on enough platforms/architectures/PAM-implementations to
-// be sure.
+// pam_getenvlist
 func (t *Transaction) GetEnvList() (map[string]string, error) {
 	env := make(map[string]string)
 	p := C.pam_getenvlist(t.handle)
@@ -266,15 +250,14 @@ func (t *Transaction) GetEnvList() (map[string]string, error) {
 		t.status = C.PAM_BUF_ERR
 		return nil, t
 	}
-	list := (uintptr)(unsafe.Pointer(p))
-	for *(*uintptr)(unsafe.Pointer(list)) != 0 {
-		entry := *(*uintptr)(unsafe.Pointer(list))
-		nameval := C.GoString((*C.char)(unsafe.Pointer(entry)))
-		chunks := strings.SplitN(nameval, "=", 2)
+	for *p != nil {
+		chunks := strings.SplitN(C.GoString(*p), "=", 2)
 		if len(chunks) == 2 {
 			env[chunks[0]] = chunks[1]
-			list += (uintptr)(unsafe.Sizeof(list))
 		}
+		C.free(unsafe.Pointer(*p))
+		p = (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + unsafe.Sizeof(p)))
 	}
+	C.free(unsafe.Pointer(p))
 	return env, nil
 }

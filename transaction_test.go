@@ -2,10 +2,15 @@ package pam
 
 import (
 	"errors"
+	"os/user"
 	"testing"
 )
 
 func TestPAM_001(t *testing.T) {
+	u, _ := user.Current()
+	if u.Uid != "0" {
+		t.Skip("run this test as root")
+	}
 	tx, err := StartFunc("", "test", func(s Style, msg string) (string, error) {
 		return "secret", nil
 	})
@@ -19,6 +24,10 @@ func TestPAM_001(t *testing.T) {
 }
 
 func TestPAM_002(t *testing.T) {
+	u, _ := user.Current()
+	if u.Uid != "0" {
+		t.Skip("run this test as root")
+	}
 	tx, err := StartFunc("", "", func(s Style, msg string) (string, error) {
 		switch s {
 		case PromptEchoOn:
@@ -53,6 +62,10 @@ func (c Credentials) RespondPAM(s Style, msg string) (string, error) {
 }
 
 func TestPAM_003(t *testing.T) {
+	u, _ := user.Current()
+	if u.Uid != "0" {
+		t.Skip("run this test as root")
+	}
 	c := Credentials{
 		User:     "test",
 		Password: "secret",
@@ -68,6 +81,10 @@ func TestPAM_003(t *testing.T) {
 }
 
 func TestPAM_004(t *testing.T) {
+	u, _ := user.Current()
+	if u.Uid != "0" {
+		t.Skip("run this test as root")
+	}
 	c := Credentials{
 		Password: "secret",
 	}
@@ -79,4 +96,18 @@ func TestPAM_004(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
 	}
+}
+
+func TestGetEnvList(t *testing.T) {
+	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
+		return "", nil
+	})
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
+	m, err := tx.GetEnvList()
+	if err != nil {
+		t.Fatalf("getenvlist #error: %v", err)
+	}
+	t.Log(m)
 }
