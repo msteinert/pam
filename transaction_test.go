@@ -98,7 +98,41 @@ func TestPAM_004(t *testing.T) {
 	}
 }
 
-func TestGetEnvList(t *testing.T) {
+func TestItem(t *testing.T) {
+	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
+		return "", nil
+	})
+
+	s, err := tx.GetItem(Service)
+	if err != nil {
+		t.Fatalf("getitem #error: %v", err)
+	}
+	if s != "passwd" {
+		t.Fatalf("getitem #error: expected passwd, got %v", s)
+	}
+
+	s, err = tx.GetItem(User)
+	if err != nil {
+		t.Fatalf("getitem #error: %v", err)
+	}
+	if s != "test" {
+		t.Fatalf("getitem #error: expected test, got %v", s)
+	}
+
+	err = tx.SetItem(User, "root")
+	if err != nil {
+		t.Fatalf("setitem #error: %v", err)
+	}
+	s, err = tx.GetItem(User)
+	if err != nil {
+		t.Fatalf("getitem #error: %v", err)
+	}
+	if s != "root" {
+		t.Fatalf("getitem #error: expected root, got %v", s)
+	}
+}
+
+func TestEnv(t *testing.T) {
 	tx, err := StartFunc("", "", func(s Style, msg string) (string, error) {
 		return "", nil
 	})
