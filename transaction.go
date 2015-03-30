@@ -242,6 +242,10 @@ func (t *Transaction) GetEnv(name string) string {
 	return C.GoString(value)
 }
 
+func next(p **C.char) **C.char {
+	return (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + unsafe.Sizeof(p)))
+}
+
 // pam_getenvlist
 func (t *Transaction) GetEnvList() (map[string]string, error) {
 	env := make(map[string]string)
@@ -250,14 +254,12 @@ func (t *Transaction) GetEnvList() (map[string]string, error) {
 		t.status = C.PAM_BUF_ERR
 		return nil, t
 	}
-	q := p
-	for *q != nil {
+	for q := p; *q != nil; q = next(q) {
 		chunks := strings.SplitN(C.GoString(*q), "=", 2)
 		if len(chunks) == 2 {
 			env[chunks[0]] = chunks[1]
 		}
 		C.free(unsafe.Pointer(*q))
-		q = (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(q)) + unsafe.Sizeof(*p)))
 	}
 	C.free(unsafe.Pointer(p))
 	return env, nil
