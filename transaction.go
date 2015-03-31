@@ -45,7 +45,7 @@ type Conversation struct {
 }
 
 // Constructs a new conversation object with a given handler and a newly
-// allocated pam_conv struct that uses this object as its appdata_ptr
+// allocated pam_conv struct that uses this object as its appdata_ptr.
 func NewConversation(handler ConversationHandler) (*Conversation, C.int) {
 	c := &Conversation{}
 	c.handler = handler
@@ -82,14 +82,11 @@ func TransactionFinalizer(t *Transaction) {
 	C.free(unsafe.Pointer(t.conv.conv))
 }
 
-// Start initiates a new PAM transaction. service is treated identically
+// Start initiates a new PAM transaction. Service is treated identically
 // to how pam_start treats it internally.
 //
 // All application calls to PAM begin with Start(). The returned *Transaction
 // provides an interface to the remainder of the API.
-//
-// The returned status int may be ABORT, BUF_ERR, SUCCESS, or SYSTEM_ERR, as per
-// the official PAM documentation.
 func Start(service, user string, handler ConversationHandler) (*Transaction, error) {
 	t := &Transaction{}
 	t.conv, t.status = NewConversation(handler)
