@@ -1,5 +1,6 @@
 #include "_cgo_export.h"
 #include <security/pam_appl.h>
+#include <string.h>
 
 int cb_pam_conv(
 	int num_msg,
@@ -8,13 +9,17 @@ int cb_pam_conv(
 	void *appdata_ptr)
 {
 	*resp = calloc(num_msg, sizeof **resp);
+	if (num_msg <= 0 || num_msg > PAM_MAX_NUM_MSG) {
+		return PAM_CONV_ERR;
+	}
 	if (!*resp) {
 		return PAM_BUF_ERR;
 	}
 	for (size_t i = 0; i < num_msg; ++i) {
-		const struct pam_message *m = msg[i];
-		struct cbPAMConv_return result =
-			cbPAMConv(m->msg_style, (char *)m->msg, appdata_ptr);
+		struct cbPAMConv_return result = cbPAMConv(
+				msg[i]->msg_style,
+				(char *)msg[i]->msg,
+				appdata_ptr);
 		if (result.r1 != PAM_SUCCESS) {
 			goto error;
 		}
@@ -23,8 +28,12 @@ int cb_pam_conv(
 	return PAM_SUCCESS;
 error:
 	for (size_t i = 0; i < num_msg; ++i) {
-		free((*resp)[i].resp);
+		if ((*resp)[i].resp) {
+			memset((*resp)[i].resp, 0, strlen((*resp)[i].resp));
+			free((*resp)[i].resp);
+		}
 	}
+	memset(*resp, 0, num_msg * sizeof *resp);
 	free(*resp);
 	*resp = NULL;
 	return PAM_CONV_ERR;
