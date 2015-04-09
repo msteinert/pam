@@ -9,4 +9,6 @@ before_install:
   - sudo apt-get install -qq --no-install-recommends libpam0g-dev
   - sudo useradd -d /tmp/test -p '$1$Qd8H95T5$RYSZQeoFbEB.gS19zS99A0' -s /bin/false test
 
-script: sudo GOROOT=$GOROOT GOPATH=$GOPATH $(which go) test -v -cover .
+script:
+  - go get golang.org/x/tools/cmd/cover
+  - sudo GOROOT=$GOROOT GOPATH=$GOPATH $(which go) test -v -cover .
