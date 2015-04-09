@@ -3,6 +3,7 @@ package pam
 import (
 	"errors"
 	"os/user"
+	"runtime"
 	"testing"
 )
 
@@ -21,6 +22,15 @@ func TestPAM_001(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
 	}
+	err = tx.AcctMgmt(Silent)
+	if err != nil {
+		t.Fatalf("acct_mgmt #error: %v", err)
+	}
+	err = tx.SetCred(Silent | EstablishCred)
+	if err != nil {
+		t.Fatalf("setcred #error: %v", err)
+	}
+	runtime.GC()
 }
 
 func TestPAM_002(t *testing.T) {
@@ -44,6 +54,7 @@ func TestPAM_002(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
 	}
+	runtime.GC()
 }
 
 type Credentials struct {
@@ -78,6 +89,7 @@ func TestPAM_003(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
 	}
+	runtime.GC()
 }
 
 func TestPAM_004(t *testing.T) {
@@ -96,6 +108,69 @@ func TestPAM_004(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
 	}
+	runtime.GC()
+}
+
+func TestPAM_005(t *testing.T) {
+	u, _ := user.Current()
+	if u.Uid != "0" {
+		t.Skip("run this test as root")
+	}
+	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
+		return "secret", nil
+	})
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
+	err = tx.ChangeAuthTok(Silent)
+	if err != nil {
+		t.Fatalf("chauthtok #error: %v", err)
+	}
+	runtime.GC()
+}
+
+func TestPAM_006(t *testing.T) {
+	u, _ := user.Current()
+	if u.Uid != "0" {
+		t.Skip("run this test as root")
+	}
+	tx, err := StartFunc("passwd", u.Username, func(s Style, msg string) (string, error) {
+		return "secret", nil
+	})
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
+	err = tx.OpenSession(Silent)
+	if err != nil {
+		t.Fatalf("open_session #error: %v", err)
+	}
+	err = tx.CloseSession(Silent)
+	if err != nil {
+		t.Fatalf("close_session #error: %v", err)
+	}
+	runtime.GC()
+}
+
+func TestPAM_007(t *testing.T) {
+	u, _ := user.Current()
+	if u.Uid != "0" {
+		t.Skip("run this test as root")
+	}
+	tx, err := StartFunc("", "test", func(s Style, msg string) (string, error) {
+		return "", errors.New("Sorry, it didn't work")
+	})
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
+	err = tx.Authenticate(0)
+	if err == nil {
+		t.Fatalf("authenticate #expected an error", err)
+	}
+	s := err.Error()
+	if len(s) == 0 {
+		t.Fatalf("error #expected an error message")
+	}
+	runtime.GC()
 }
 
 func TestItem(t *testing.T) {
@@ -130,6 +205,7 @@ func TestItem(t *testing.T) {
 	if s != "root" {
 		t.Fatalf("getitem #error: expected root, got %v", s)
 	}
+	runtime.GC()
 }
 
 func TestEnv(t *testing.T) {
@@ -161,7 +237,12 @@ func TestEnv(t *testing.T) {
 		}
 	}
 
-	s := tx.GetEnv("VAL1")
+	s := tx.GetEnv("VAL0")
+	if s != "" {
+		t.Fatalf("getenv #error: expected \"\", got %v", s)
+	}
+
+	s = tx.GetEnv("VAL1")
 	if s != "1" {
 		t.Fatalf("getenv #error: expected 1, got %v", s)
 	}
@@ -191,4 +272,5 @@ func TestEnv(t *testing.T) {
 	if m["VAL3"] != "3" {
 		t.Fatalf("getenvlist #error: expected 3, got %v", m["VAL1"])
 	}
+	runtime.GC()
 }
