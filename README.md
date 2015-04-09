@@ -1,5 +1,6 @@
 [![Build Status](https://travis-ci.org/msteinert/pam.svg?branch=master)](https://travis-ci.org/msteinert/pam)
 [![GoDoc](https://godoc.org/github.com/msteinert/pam?status.svg)](http://godoc.org/github.com/msteinert/pam)
+[![Coverage Status](https://coveralls.io/repos/msteinert/pam/badge.svg)](https://coveralls.io/r/msteinert/pam)
 
 # Go PAM
 
