@@ -13,20 +13,31 @@ import (
 	"unsafe"
 )
 
+// Style is the type of message that the conversation handler should display.
 type Style int
 
+// Coversation handler style types.
 const (
+	// PromptEchoOff indicates the conversation handler should obtain a
+	// string without echoing any text.
 	PromptEchoOff Style = C.PAM_PROMPT_ECHO_OFF
-	PromptEchoOn        = C.PAM_PROMPT_ECHO_ON
-	ErrorMsg            = C.PAM_ERROR_MSG
-	TextInfo            = C.PAM_TEXT_INFO
+	// PromptEchoOn indicates the conversation handler should obtain a
+	// string while echoing text.
+	PromptEchoOn = C.PAM_PROMPT_ECHO_ON
+	// ErrorMsg indicates the conversation handler should display an
+	// error message.
+	ErrorMsg = C.PAM_ERROR_MSG
+	// TextInfo indicates the conversation handler should display some
+	// text.
+	TextInfo = C.PAM_TEXT_INFO
 )
 
-// Objects implementing the ConversationHandler interface can be registered as
-// conversation callbacks to be used during PAM authentication. RespondPAM
-// receives a message style and a message string. It is expected to return a
-// response string.
+// ConversationHandler is an interface for objects that can be used as
+// conversation callbacks during PAM authentication.
 type ConversationHandler interface {
+	// RespondPAM receives a message style and a message string. If the
+	// message Style is PromptEchoOff or PromptEchoOn then the function
+	// should return a response string.
 	RespondPAM(Style, string) (string, error)
 }
 
@@ -34,20 +45,21 @@ type ConversationHandler interface {
 // conversation callbacks.
 type ConversationFunc func(Style, string) (string, error)
 
+// RespondPAM is a conversation callback adapter.
 func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 	return f(s, msg)
 }
 
 // Internal conversation structure
-type Conversation struct {
+type conversation struct {
 	handler ConversationHandler
 	conv    *C.struct_pam_conv
 }
 
 // Constructs a new conversation object with a given handler and a newly
 // allocated pam_conv struct that uses this object as its appdata_ptr.
-func NewConversation(handler ConversationHandler) (*Conversation, C.int) {
-	c := &Conversation{}
+func newConversation(handler ConversationHandler) (*conversation, C.int) {
+	c := &conversation{}
 	c.handler = handler
 	c.conv = C.make_pam_conv(unsafe.Pointer(c))
 	if c.conv == nil {
@@ -61,7 +73,7 @@ func NewConversation(handler ConversationHandler) (*Conversation, C.int) {
 // coming in from a C-side call.
 //export cbPAMConv
 func cbPAMConv(s C.int, msg *C.char, appdata unsafe.Pointer) (*C.char, C.int) {
-	c := (*Conversation)(appdata)
+	c := (*conversation)(appdata)
 	r, err := c.handler.RespondPAM(Style(s), C.GoString(msg))
 	if err != nil {
 		return nil, C.PAM_CONV_ERR
@@ -72,24 +84,24 @@ func cbPAMConv(s C.int, msg *C.char, appdata unsafe.Pointer) (*C.char, C.int) {
 // Transaction is the application's handle for a PAM transaction.
 type Transaction struct {
 	handle *C.pam_handle_t
-	conv   *Conversation
+	conv   *conversation
 	status C.int
 }
 
 // Finalize a PAM transaction.
-func TransactionFinalizer(t *Transaction) {
+func transactionFinalizer(t *Transaction) {
 	C.pam_end(t.handle, t.status)
 	C.free(unsafe.Pointer(t.conv.conv))
 }
 
-// Start initiates a new PAM transaction. Service is treated identically
-// to how pam_start treats it internally.
+// Start initiates a new PAM transaction. Service is treated identically to
+// how pam_start treats it internally.
 //
-// All application calls to PAM begin with Start(). The returned *Transaction
-// provides an interface to the remainder of the API.
+// All application calls to PAM begin with Start (or StartFunc). The returned
+// transaction provides an interface to the remainder of the API.
 func Start(service, user string, handler ConversationHandler) (*Transaction, error) {
 	t := &Transaction{}
-	t.conv, t.status = NewConversation(handler)
+	t.conv, t.status = newConversation(handler)
 	if t.status != C.PAM_SUCCESS {
 		return nil, t
 	}
@@ -105,10 +117,11 @@ func Start(service, user string, handler ConversationHandler) (*Transaction, err
 		C.free(unsafe.Pointer(t.conv.conv))
 		return nil, t
 	}
-	runtime.SetFinalizer(t, TransactionFinalizer)
+	runtime.SetFinalizer(t, transactionFinalizer)
 	return t, nil
 }
 
+// StartFunc registers the handler func as a conversation handler.
 func StartFunc(service, user string, handler func(Style, string) (string, error)) (*Transaction, error) {
 	return Start(service, user, ConversationFunc(handler))
 }
@@ -117,20 +130,30 @@ func (t *Transaction) Error() string {
 	return C.GoString(C.pam_strerror(t.handle, C.int(t.status)))
 }
 
+// Item is a an PAM information type.
 type Item int
 
+// PAM Item types.
 const (
-	Service    Item = C.PAM_SERVICE
-	User            = C.PAM_USER
-	Tty             = C.PAM_TTY
-	Rhost           = C.PAM_RHOST
-	Authtok         = C.PAM_AUTHTOK
-	Oldauthtok      = C.PAM_OLDAUTHTOK
-	Ruser           = C.PAM_RUSER
-	UserPrompt      = C.PAM_USER_PROMPT
+	// Service is the name which identifies the PAM stack.
+	Service Item = C.PAM_SERVICE
+	// User identifies the username identity used by a service.
+	User = C.PAM_USER
+	// Tty is the terminal name.
+	Tty = C.PAM_TTY
+	// Rhost is the requesting host name.
+	Rhost = C.PAM_RHOST
+	// Authtok is the currently active authentication token.
+	Authtok = C.PAM_AUTHTOK
+	// Oldauthtok is the old authentication token.
+	Oldauthtok = C.PAM_OLDAUTHTOK
+	// Ruser is the requesting user name.
+	Ruser = C.PAM_RUSER
+	// UserPrompt is the string use to prompt for a username.
+	UserPrompt = C.PAM_USER_PROMPT
 )
 
-// pam_set_item
+// SetItem sets a PAM information item.
 func (t *Transaction) SetItem(i Item, item string) error {
 	cs := unsafe.Pointer(C.CString(item))
 	defer C.free(cs)
@@ -141,7 +164,7 @@ func (t *Transaction) SetItem(i Item, item string) error {
 	return nil
 }
 
-// pam_get_item
+// GetItem retrieves a PAM information item.
 func (t *Transaction) GetItem(i Item) (string, error) {
 	var s unsafe.Pointer
 	t.status = C.pam_get_item(t.handle, C.int(i), &s)
@@ -151,19 +174,37 @@ func (t *Transaction) GetItem(i Item) (string, error) {
 	return C.GoString((*C.char)(s)), nil
 }
 
+// Flags are inputs to various PAM functions than be combined with a bitwise
+// or. Refer to the official PAM documentation for which flags are accepted
+// by which functions.
 type Flags int
 
+// PAM Flag types.
 const (
-	Silent               Flags = C.PAM_SILENT
-	DisallowNullAuthtok        = C.PAM_DISALLOW_NULL_AUTHTOK
-	EstablishCred              = C.PAM_ESTABLISH_CRED
-	DeleteCred                 = C.PAM_DELETE_CRED
-	ReinitializeCred           = C.PAM_REINITIALIZE_CRED
-	RefreshCred                = C.PAM_REFRESH_CRED
-	ChangeExpiredAuthtok       = C.PAM_CHANGE_EXPIRED_AUTHTOK
+	// Silent indicates that no messages should be emitted.
+	Silent Flags = C.PAM_SILENT
+	// DisallowNullAuthtok indicates that authorization should fail
+	// if the user does not have a registered authentication token.
+	DisallowNullAuthtok = C.PAM_DISALLOW_NULL_AUTHTOK
+	// EstablishCred indicates that credentials should be established
+	// for the user.
+	EstablishCred = C.PAM_ESTABLISH_CRED
+	// DeleteCred inidicates that credentials should be deleted.
+	DeleteCred = C.PAM_DELETE_CRED
+	// ReinitializeCred indicates that credentials should be fully
+	// reinitialized.
+	ReinitializeCred = C.PAM_REINITIALIZE_CRED
+	// RefreshCred indicates that the lifetime of existing credentials
+	// should be extended.
+	RefreshCred = C.PAM_REFRESH_CRED
+	// ChangeExpiredAuthtok indicates that the authentication token
+	// should be changed if it has expired.
+	ChangeExpiredAuthtok = C.PAM_CHANGE_EXPIRED_AUTHTOK
 )
 
-// pam_authenticate
+// Authenticate is used to authenticate the user.
+//
+// Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) Authenticate(f Flags) error {
 	t.status = C.pam_authenticate(t.handle, C.int(f))
 	if t.status != C.PAM_SUCCESS {
@@ -172,7 +213,10 @@ func (t *Transaction) Authenticate(f Flags) error {
 	return nil
 }
 
-// pam_setcred
+// SetCred is used to establish, maintain and delete the credentials of a
+// user.
+//
+// Valid flags: EstablishCred, DeleteCred, ReinitializeCred, RefreshCred
 func (t *Transaction) SetCred(f Flags) error {
 	t.status = C.pam_setcred(t.handle, C.int(f))
 	if t.status != C.PAM_SUCCESS {
@@ -181,7 +225,9 @@ func (t *Transaction) SetCred(f Flags) error {
 	return nil
 }
 
-// pam_acctmgmt
+// AcctMgmt is used to determine if the user's account is valid.
+//
+// Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) AcctMgmt(f Flags) error {
 	t.status = C.pam_acct_mgmt(t.handle, C.int(f))
 	if t.status != C.PAM_SUCCESS {
@@ -190,7 +236,9 @@ func (t *Transaction) AcctMgmt(f Flags) error {
 	return nil
 }
 
-// pam_chauthtok
+// ChangeAuthTok is used to change the authentication token.
+//
+// Valid flags: Silent, ChangeExpiredAuthtok
 func (t *Transaction) ChangeAuthTok(f Flags) error {
 	t.status = C.pam_chauthtok(t.handle, C.int(f))
 	if t.status != C.PAM_SUCCESS {
@@ -199,7 +247,9 @@ func (t *Transaction) ChangeAuthTok(f Flags) error {
 	return nil
 }
 
-// pam_open_session
+// OpenSession sets up a user session for an authenticated user.
+//
+// Valid flags: Slient
 func (t *Transaction) OpenSession(f Flags) error {
 	t.status = C.pam_open_session(t.handle, C.int(f))
 	if t.status != C.PAM_SUCCESS {
@@ -208,7 +258,9 @@ func (t *Transaction) OpenSession(f Flags) error {
 	return nil
 }
 
-// pam_close_session
+// CloseSession closes a previously opened session.
+//
+// Valid flags: Silent
 func (t *Transaction) CloseSession(f Flags) error {
 	t.status = C.pam_close_session(t.handle, C.int(f))
 	if t.status != C.PAM_SUCCESS {
@@ -217,7 +269,11 @@ func (t *Transaction) CloseSession(f Flags) error {
 	return nil
 }
 
-// pam_putenv
+// PutEnv adds or changes the value of PAM environment variables.
+//
+// NAME=value will set a variable to a value.
+// NAME= will set a variable to an empty value.
+// NAME (without an "=") will delete a variable.
 func (t *Transaction) PutEnv(nameval string) error {
 	cs := C.CString(nameval)
 	defer C.free(unsafe.Pointer(cs))
@@ -228,7 +284,7 @@ func (t *Transaction) PutEnv(nameval string) error {
 	return nil
 }
 
-// pam_getenv
+// GetEnv is used to retrieve a PAM environment variable.
 func (t *Transaction) GetEnv(name string) string {
 	cs := C.CString(name)
 	defer C.free(unsafe.Pointer(cs))
@@ -243,7 +299,7 @@ func next(p **C.char) **C.char {
 	return (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + unsafe.Sizeof(p)))
 }
 
-// pam_getenvlist
+// GetEnvList returns a copy of the PAM environment as a map.
 func (t *Transaction) GetEnvList() (map[string]string, error) {
 	env := make(map[string]string)
 	p := C.pam_getenvlist(t.handle)

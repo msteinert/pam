@@ -164,7 +164,7 @@ func TestPAM_007(t *testing.T) {
 	}
 	err = tx.Authenticate(0)
 	if err == nil {
-		t.Fatalf("authenticate #expected an error", err)
+		t.Fatalf("authenticate #expected an error")
 	}
 	s := err.Error()
 	if len(s) == 0 {
