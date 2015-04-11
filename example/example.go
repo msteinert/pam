@@ -21,12 +21,13 @@ package main
 
 import (
 	"bufio"
-	"code.google.com/p/gopass"
 	"errors"
 	"fmt"
-	"github.com/msteinert/pam"
 	"log"
 	"os"
+
+	"code.google.com/p/gopass"
+	"github.com/msteinert/pam"
 )
 
 func main() {
@@ -35,9 +36,8 @@ func main() {
 		case pam.PromptEchoOff:
 			return gopass.GetPass(msg)
 		case pam.PromptEchoOn:
-			fmt.Print(msg)
-			bio := bufio.NewReader(os.Stdin)
-			input, err := bio.ReadString('\n')
+			fmt.Print(msg + " ")
+			input, err := bufio.NewReader(os.Stdin).ReadString('\n')
 			if err != nil {
 				return "", err
 			}
