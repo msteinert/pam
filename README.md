@@ -33,4 +33,4 @@ $ sudo GOPATH=$GOPATH $(which go) test -v
 ```
 
 [1]: http://godoc.org/github.com/msteinert/pam
-[2]: http://www.kernel.org/pub/linux/libs/pam/Linux-PAM-html/adg-interface-by-app-expected.html
+[2]: http://www.linux-pam.org/Linux-PAM-html/Linux-PAM_ADG.html
