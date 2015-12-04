@@ -26,7 +26,7 @@ import (
 	"log"
 	"os"
 
-	"code.google.com/p/gopass"
+	"github.com/bgentry/speakeasy"
 	"github.com/msteinert/pam"
 )
 
@@ -34,7 +34,7 @@ func main() {
 	t, err := pam.StartFunc("", "", func(s pam.Style, msg string) (string, error) {
 		switch s {
 		case pam.PromptEchoOff:
-			return gopass.GetPass(msg)
+			return speakeasy.Ask(msg)
 		case pam.PromptEchoOn:
 			fmt.Print(msg + " ")
 			input, err := bufio.NewReader(os.Stdin).ReadString('\n')
