@@ -54,7 +54,7 @@ func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 //export cbPAMConv
 func cbPAMConv(s C.int, msg *C.char, c int) (*C.char, C.int) {
 	var r string
-	var err error = nil
+	var err error
 	v := cbGet(c)
 	switch cb := v.(type) {
 	case ConversationHandler:
