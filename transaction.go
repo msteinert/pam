@@ -1,3 +1,4 @@
+// Package pam provides a wrapper for the PAM application API.
 package pam
 
 //#include <security/pam_appl.h>
