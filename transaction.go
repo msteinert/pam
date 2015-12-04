@@ -50,30 +50,15 @@ func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 	return f(s, msg)
 }
 
-// Constructs a new conversation object with a given handler and a newly
-// allocated pam_conv struct that uses this object as its appdata_ptr.
-func newConversation(handler ConversationHandler) (*C.struct_pam_conv, int, C.int) {
-	c := cbAdd(handler)
-	conv := &C.struct_pam_conv{}
-	C.init_pam_conv(conv, C.long(c))
-	return conv, c, C.PAM_SUCCESS
-}
-
-// Go-side function for processing a single conversational message. Ultimately
-// this calls the associated ConversationHandler's ResponsePAM callback with data
-// coming in from a C-side call.
+// cbPAMConv is a wrapper for the conversation callback function.
 //export cbPAMConv
 func cbPAMConv(s C.int, msg *C.char, c int) (*C.char, C.int) {
 	var r string
-	var err error
+	var err error = nil
 	v := cbGet(c)
 	switch cb := v.(type) {
-	case ConversationFunc:
-		r, err = cb(Style(s), C.GoString(msg))
 	case ConversationHandler:
 		r, err = cb.RespondPAM(Style(s), C.GoString(msg))
-	default:
-		return nil, C.PAM_CONV_ERR
 	}
 	if err != nil {
 		return nil, C.PAM_CONV_ERR
@@ -89,7 +74,8 @@ type Transaction struct {
 	c      int
 }
 
-// Finalize a PAM transaction.
+// transactionFinalizer cleans up the PAM handle and deletes the callback
+// function.
 func transactionFinalizer(t *Transaction) {
 	C.pam_end(t.handle, t.status)
 	cbDelete(t.c)
@@ -101,11 +87,11 @@ func transactionFinalizer(t *Transaction) {
 // All application calls to PAM begin with Start (or StartFunc). The returned
 // transaction provides an interface to the remainder of the API.
 func Start(service, user string, handler ConversationHandler) (*Transaction, error) {
-	t := &Transaction{}
-	t.conv, t.c, t.status = newConversation(handler)
-	if t.status != C.PAM_SUCCESS {
-		return nil, t
+	t := &Transaction{
+		conv: &C.struct_pam_conv{},
+		c:    cbAdd(handler),
 	}
+	C.init_pam_conv(t.conv, C.long(t.c))
 	runtime.SetFinalizer(t, transactionFinalizer)
 	s := C.CString(service)
 	defer C.free(unsafe.Pointer(s))

@@ -12,8 +12,9 @@ func TestPAM_001(t *testing.T) {
 	if u.Uid != "0" {
 		t.Skip("run this test as root")
 	}
+	p := "secret"
 	tx, err := StartFunc("", "test", func(s Style, msg string) (string, error) {
-		return "secret", nil
+		return p, nil
 	})
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
