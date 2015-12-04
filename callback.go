@@ -8,12 +8,13 @@ var cb struct {
 	c int
 }
 
+func init() {
+	cb.m = make(map[int]interface{})
+}
+
 func cbAdd(v interface{}) int {
 	cb.Lock()
 	defer cb.Unlock()
-	if cb.m == nil {
-		cb.m = make(map[int]interface{})
-	}
 	cb.c++
 	cb.m[cb.c] = v
 	return cb.c
@@ -22,9 +23,17 @@ func cbAdd(v interface{}) int {
 func cbGet(c int) interface{} {
 	cb.Lock()
 	defer cb.Unlock()
-	v := cb.m[c]
-	if v == nil {
+	if v, ok := cb.m[c]; ok {
+		return v
+	}
+	panic("Callback pointer not found")
+}
+
+func cbDelete(c int) {
+	cb.Lock()
+	defer cb.Unlock()
+	if _, ok := cb.m[c]; !ok {
 		panic("Callback pointer not found")
 	}
-	return v
+	delete(cb.m, c)
 }

@@ -52,11 +52,11 @@ func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 
 // Constructs a new conversation object with a given handler and a newly
 // allocated pam_conv struct that uses this object as its appdata_ptr.
-func newConversation(handler ConversationHandler) (*C.struct_pam_conv, C.int) {
+func newConversation(handler ConversationHandler) (*C.struct_pam_conv, int, C.int) {
 	c := cbAdd(handler)
 	conv := &C.struct_pam_conv{}
 	C.init_pam_conv(conv, C.long(c))
-	return conv, C.PAM_SUCCESS
+	return conv, c, C.PAM_SUCCESS
 }
 
 // Go-side function for processing a single conversational message. Ultimately
@@ -86,11 +86,13 @@ type Transaction struct {
 	handle *C.pam_handle_t
 	conv   *C.struct_pam_conv
 	status C.int
+	c      int
 }
 
 // Finalize a PAM transaction.
 func transactionFinalizer(t *Transaction) {
 	C.pam_end(t.handle, t.status)
+	cbDelete(t.c)
 }
 
 // Start initiates a new PAM transaction. Service is treated identically to
@@ -100,10 +102,11 @@ func transactionFinalizer(t *Transaction) {
 // transaction provides an interface to the remainder of the API.
 func Start(service, user string, handler ConversationHandler) (*Transaction, error) {
 	t := &Transaction{}
-	t.conv, t.status = newConversation(handler)
+	t.conv, t.c, t.status = newConversation(handler)
 	if t.status != C.PAM_SUCCESS {
 		return nil, t
 	}
+	runtime.SetFinalizer(t, transactionFinalizer)
 	s := C.CString(service)
 	defer C.free(unsafe.Pointer(s))
 	var u *C.char
@@ -115,7 +118,6 @@ func Start(service, user string, handler ConversationHandler) (*Transaction, err
 	if t.status != C.PAM_SUCCESS {
 		return nil, t
 	}
-	runtime.SetFinalizer(t, transactionFinalizer)
 	return t, nil
 }
 
