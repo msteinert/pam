@@ -15,4 +15,4 @@ before_install:
 
 script:
   - sudo GOROOT=$GOROOT GOPATH=$GOPATH $(which go) test -v -covermode=count -coverprofile=coverage.out .
-  - goveralls -coverprofile=coverage.out -service travis-ci -repotoken $REPO_TOKEN
+  - if [ "$TRAVIS_PULL_REQUEST" != "false" ]; then goveralls -coverprofile=coverage.out -service travis-ci -repotoken $REPO_TOKEN; fi
