@@ -16,14 +16,16 @@ int cb_pam_conv(
 		return PAM_BUF_ERR;
 	}
 	for (size_t i = 0; i < num_msg; ++i) {
-		struct cbPAMConv_return result = cbPAMConv(
+		int ret = 0;
+		char *tmp = cbPAMConv(
 				msg[i]->msg_style,
 				(char *)msg[i]->msg,
-				(long)appdata_ptr);
-		if (result.r1 != PAM_SUCCESS) {
+				(long)appdata_ptr,
+				&ret);
+		if (ret != PAM_SUCCESS) {
 			goto error;
 		}
-		(*resp)[i].resp = result.r0;
+		(*resp)[i].resp = tmp;
 	}
 	return PAM_SUCCESS;
 error:

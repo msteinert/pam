@@ -53,7 +53,7 @@ func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 
 // cbPAMConv is a wrapper for the conversation callback function.
 //export cbPAMConv
-func cbPAMConv(s C.int, msg *C.char, c int) (*C.char, C.int) {
+func cbPAMConv(s C.int, msg *C.char, c int, ret *C.int) *C.char {
 	var r string
 	var err error
 	v := cbGet(c)
@@ -62,9 +62,11 @@ func cbPAMConv(s C.int, msg *C.char, c int) (*C.char, C.int) {
 		r, err = cb.RespondPAM(Style(s), C.GoString(msg))
 	}
 	if err != nil {
-		return nil, C.PAM_CONV_ERR
+		*ret = C.PAM_CONV_ERR
+		return nil
 	}
-	return C.CString(r), C.PAM_SUCCESS
+	*ret = C.PAM_SUCCESS
+	return C.CString(r)
 }
 
 // Transaction is the application's handle for a PAM transaction.
