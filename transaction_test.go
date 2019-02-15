@@ -175,7 +175,7 @@ func TestPAM_007(t *testing.T) {
 }
 
 func TestItem(t *testing.T) {
-	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
+	tx, _ := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
 		return "", nil
 	})
 
