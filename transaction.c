@@ -4,7 +4,7 @@
 
 int cb_pam_conv(
 	int num_msg,
-	const struct pam_message **msg,
+        struct pam_message **msg,
 	struct pam_response **resp,
 	void *appdata_ptr)
 {
