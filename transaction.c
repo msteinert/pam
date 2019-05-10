@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "_cgo_export.h"
 #include <security/pam_appl.h>
 #include <string.h>
