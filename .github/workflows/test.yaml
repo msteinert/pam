@@ -1,0 +1,22 @@
+on: [push, pull_request]
+name: Test
+jobs:
+  test:
+    strategy:
+      matrix:
+        go-version: [1.16.x, 1.17.x]
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: Install PAM
+      run: sudo apt install -y libpam-dev
+    - name: Add a test user
+      run: sudo useradd -d /tmp/test -p '$1$Qd8H95T5$RYSZQeoFbEB.gS19zS99A0' -s /bin/false test
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Test
+      run: sudo go test -v ./...
