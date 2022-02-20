@@ -3,7 +3,6 @@ package pam
 import (
 	"errors"
 	"os/user"
-	"runtime"
 	"testing"
 )
 
@@ -31,7 +30,6 @@ func TestPAM_001(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setcred #error: %v", err)
 	}
-	runtime.GC()
 }
 
 func TestPAM_002(t *testing.T) {
@@ -55,7 +53,6 @@ func TestPAM_002(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
 	}
-	runtime.GC()
 }
 
 type Credentials struct {
@@ -90,7 +87,6 @@ func TestPAM_003(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
 	}
-	runtime.GC()
 }
 
 func TestPAM_004(t *testing.T) {
@@ -109,7 +105,6 @@ func TestPAM_004(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
 	}
-	runtime.GC()
 }
 
 func TestPAM_005(t *testing.T) {
@@ -127,7 +122,6 @@ func TestPAM_005(t *testing.T) {
 	if err != nil {
 		t.Fatalf("chauthtok #error: %v", err)
 	}
-	runtime.GC()
 }
 
 func TestPAM_006(t *testing.T) {
@@ -149,7 +143,6 @@ func TestPAM_006(t *testing.T) {
 	if err != nil {
 		t.Fatalf("close_session #error: %v", err)
 	}
-	runtime.GC()
 }
 
 func TestPAM_007(t *testing.T) {
@@ -171,7 +164,6 @@ func TestPAM_007(t *testing.T) {
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
 	}
-	runtime.GC()
 }
 
 func TestItem(t *testing.T) {
@@ -206,7 +198,6 @@ func TestItem(t *testing.T) {
 	if s != "root" {
 		t.Fatalf("getitem #error: expected root, got %v", s)
 	}
-	runtime.GC()
 }
 
 func TestEnv(t *testing.T) {
@@ -273,7 +264,6 @@ func TestEnv(t *testing.T) {
 	if m["VAL3"] != "3" {
 		t.Fatalf("getenvlist #error: expected 3, got %v", m["VAL1"])
 	}
-	runtime.GC()
 }
 
 func TestFailure_001(t *testing.T) {
