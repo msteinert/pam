@@ -6,7 +6,11 @@ package pam
 //#cgo CFLAGS: -Wall -std=c99
 //#cgo LDFLAGS: -lpam
 //void init_pam_conv(struct pam_conv *conv, long c);
+//#if !defined(__APPLE__) && !defined(__arm64__)
 //int pam_start_confdir(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh) __attribute__ ((weak));
+//#else
+//int pam_start_confdir(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh) __attribute__ ((weak)) { return PAM_SYSTEM_ERR;}
+//#endif
 //int check_pam_start_confdir(void);
 import "C"
 

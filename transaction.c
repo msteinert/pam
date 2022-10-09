@@ -56,7 +56,9 @@ void init_pam_conv(struct pam_conv *conv, long c)
 // weaken the linking dependency to detect if it’s present.
 int pam_start_confdir(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh) __attribute__ ((weak));
 int check_pam_start_confdir(void) {
+#if !defined(__APPLE__) && !defined(__arm64__)
 	if (pam_start_confdir == NULL)
 		return 1;
+#endif
 	return 0;
 }
