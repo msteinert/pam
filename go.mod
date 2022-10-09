@@ -1,4 +1,4 @@
-module github.com/msteinert/pam
+module github.com/tknie/pam
 
 go 1.17
 
