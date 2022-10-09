@@ -1,0 +1,2 @@
+# Custom stack to always permit, independent of the user name/pass
+auth	required			pam_permit.so

@@ -51,3 +51,12 @@ void init_pam_conv(struct pam_conv *conv, long c)
 	conv->conv = cb_pam_conv;
 	conv->appdata_ptr = (void *)c;
 }
+
+// pam_start_confdir is a recent PAM api to declare a confdir (mostly for tests)
+// weaken the linking dependency to detect if it’s present.
+int pam_start_confdir(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh) __attribute__ ((weak));
+int check_pam_start_confdir(void) {
+	if (pam_start_confdir == NULL)
+		return 1;
+	return 0;
+}

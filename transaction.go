@@ -6,9 +6,12 @@ package pam
 //#cgo CFLAGS: -Wall -std=c99
 //#cgo LDFLAGS: -lpam
 //void init_pam_conv(struct pam_conv *conv, long c);
+//int pam_start_confdir(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh) __attribute__ ((weak));
+//int check_pam_start_confdir(void);
 import "C"
 
 import (
+	"errors"
 	"runtime"
 	"strings"
 	"unsafe"
@@ -85,9 +88,33 @@ func transactionFinalizer(t *Transaction) {
 // Start initiates a new PAM transaction. Service is treated identically to
 // how pam_start treats it internally.
 //
-// All application calls to PAM begin with Start (or StartFunc). The returned
+// All application calls to PAM begin with Start*. The returned
 // transaction provides an interface to the remainder of the API.
 func Start(service, user string, handler ConversationHandler) (*Transaction, error) {
+	return start(service, user, handler, "")
+}
+
+// StartFunc registers the handler func as a conversation handler.
+func StartFunc(service, user string, handler func(Style, string) (string, error)) (*Transaction, error) {
+	return Start(service, user, ConversationFunc(handler))
+}
+
+// StartConfDir initiates a new PAM transaction. Service is treated identically to
+// how pam_start treats it internally.
+// confdir allows to define where all pam services are defined. This is used to provide
+// custom paths for tests.
+//
+// All application calls to PAM begin with Start*. The returned
+// transaction provides an interface to the remainder of the API.
+func StartConfDir(service, user string, handler ConversationHandler, confDir string) (*Transaction, error) {
+	if !CheckPamHasStartConfdir() {
+		return nil, errors.New("StartConfDir() was used, but the pam version on the system is not recent enough")
+	}
+
+	return start(service, user, handler, confDir)
+}
+
+func start(service, user string, handler ConversationHandler, confDir string) (*Transaction, error) {
 	t := &Transaction{
 		conv: &C.struct_pam_conv{},
 		c:    cbAdd(handler),
@@ -101,16 +128,17 @@ func Start(service, user string, handler ConversationHandler) (*Transaction, err
 		u = C.CString(user)
 		defer C.free(unsafe.Pointer(u))
 	}
-	t.status = C.pam_start(s, u, t.conv, &t.handle)
+	if confDir == "" {
+		t.status = C.pam_start(s, u, t.conv, &t.handle)
+	} else {
+		c := C.CString(confDir)
+		defer C.free(unsafe.Pointer(c))
+		t.status = C.pam_start_confdir(s, u, t.conv, c, &t.handle)
+	}
 	if t.status != C.PAM_SUCCESS {
 		return nil, t
 	}
 	return t, nil
-}
-
-// StartFunc registers the handler func as a conversation handler.
-func StartFunc(service, user string, handler func(Style, string) (string, error)) (*Transaction, error) {
-	return Start(service, user, ConversationFunc(handler))
 }
 
 func (t *Transaction) Error() string {
@@ -303,4 +331,9 @@ func (t *Transaction) GetEnvList() (map[string]string, error) {
 	}
 	C.free(unsafe.Pointer(p))
 	return env, nil
+}
+
+// CheckPamHasStartConfdir return if pam on system supports pam_system_confdir
+func CheckPamHasStartConfdir() bool {
+	return C.check_pam_start_confdir() == 0
 }
