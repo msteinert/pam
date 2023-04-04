@@ -1,7 +1,7 @@
 module github.com/msteinert/pam
 
-go 1.17
+go 1.20
 
-require golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
+require golang.org/x/term v0.6.0
 
-require golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1 // indirect
+require golang.org/x/sys v0.6.0 // indirect
