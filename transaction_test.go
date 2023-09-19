@@ -176,6 +176,7 @@ func TestPAM_ConfDir(t *testing.T) {
 		Password: "wrongsecret",
 	}
 	tx, err := StartConfDir("my-service", "test", c, ".")
+	tx, err := StartConfDir("permit-service", u.Username, c, "test-services")
 	if !CheckPamHasStartConfdir() {
 		if err == nil {
 			t.Fatalf("start should have errored out as pam_start_confdir is not available: %v", err)
