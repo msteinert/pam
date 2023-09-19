@@ -168,14 +168,10 @@ func TestPAM_007(t *testing.T) {
 
 func TestPAM_ConfDir(t *testing.T) {
 	u, _ := user.Current()
-	if u.Uid != "0" {
-		t.Skip("run this test as root")
-	}
 	c := Credentials{
 		// the custom service always permits even with wrong password.
 		Password: "wrongsecret",
 	}
-	tx, err := StartConfDir("my-service", "test", c, ".")
 	tx, err := StartConfDir("permit-service", u.Username, c, "test-services")
 	if !CheckPamHasStartConfdir() {
 		if err == nil {
@@ -195,13 +191,10 @@ func TestPAM_ConfDir(t *testing.T) {
 
 func TestPAM_ConfDir_FailNoServiceOrUnsupported(t *testing.T) {
 	u, _ := user.Current()
-	if u.Uid != "0" {
-		t.Skip("run this test as root")
-	}
 	c := Credentials{
 		Password: "secret",
 	}
-	_, err := StartConfDir("does-not-exists", "test", c, ".")
+	_, err := StartConfDir("does-not-exists", u.Username, c, ".")
 	if err == nil {
 		t.Fatalf("authenticate #expected an error")
 	}
