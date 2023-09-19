@@ -204,6 +204,46 @@ func TestPAM_ConfDir_FailNoServiceOrUnsupported(t *testing.T) {
 	}
 }
 
+func TestPAM_ConfDir_InfoMessage(t *testing.T) {
+	u, _ := user.Current()
+	var infoText string
+	tx, err := StartConfDir("echo-service", u.Username,
+		ConversationFunc(func(s Style, msg string) (string, error) {
+			switch s {
+			case TextInfo:
+				infoText = msg
+				return "", nil
+			}
+			return "", errors.New("unexpected")
+		}), "test-services")
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
+	err = tx.Authenticate(0)
+	if err != nil {
+		t.Fatalf("authenticate #error: %v", err)
+	}
+	if infoText != "This is an info message for user " + u.Username + " on echo-service" {
+		t.Fatalf("Unexpected info message: %v", infoText)
+	}
+}
+
+func TestPAM_ConfDir_Deny(t *testing.T) {
+	u, _ := user.Current()
+	tx, err := StartConfDir("deny-service", u.Username, Credentials{}, "test-services")
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
+	err = tx.Authenticate(0)
+	if err == nil {
+		t.Fatalf("authenticate #expected an error")
+	}
+	s := err.Error()
+	if len(s) == 0 {
+		t.Fatalf("error #expected an error message")
+	}
+}
+
 func TestItem(t *testing.T) {
 	tx, _ := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
 		return "", nil
