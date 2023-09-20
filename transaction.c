@@ -1,5 +1,6 @@
 #include "_cgo_export.h"
 #include <security/pam_appl.h>
+#include <stdint.h>
 #include <string.h>
 
 #ifdef __sun
@@ -25,7 +26,7 @@ int cb_pam_conv(
 		struct cbPAMConv_return result = cbPAMConv(
 				msg[i]->msg_style,
 				(char *)msg[i]->msg,
-				(long)appdata_ptr);
+				(uintptr_t)appdata_ptr);
 		if (result.r1 != PAM_SUCCESS) {
 			goto error;
 		}
@@ -45,10 +46,10 @@ error:
 	return PAM_CONV_ERR;
 }
 
-void init_pam_conv(struct pam_conv *conv, long c)
+void init_pam_conv(struct pam_conv *conv, uintptr_t appdata)
 {
 	conv->conv = cb_pam_conv;
-	conv->appdata_ptr = (void *)c;
+	conv->appdata_ptr = (void *)appdata;
 }
 
 // pam_start_confdir is a recent PAM api to declare a confdir (mostly for tests)

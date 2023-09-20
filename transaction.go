@@ -3,9 +3,10 @@ package pam
 
 //#include <security/pam_appl.h>
 //#include <stdlib.h>
+//#include <stdint.h>
 //#cgo CFLAGS: -Wall -std=c99
 //#cgo LDFLAGS: -lpam
-//void init_pam_conv(struct pam_conv *conv, long c);
+//void init_pam_conv(struct pam_conv *conv, uintptr_t);
 //int pam_start_confdir(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh) __attribute__ ((weak));
 //int check_pam_start_confdir(void);
 import "C"
@@ -13,6 +14,7 @@ import "C"
 import (
 	"errors"
 	"runtime"
+	"runtime/cgo"
 	"strings"
 	"unsafe"
 )
@@ -56,10 +58,10 @@ func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 
 // cbPAMConv is a wrapper for the conversation callback function.
 //export cbPAMConv
-func cbPAMConv(s C.int, msg *C.char, c int) (*C.char, C.int) {
+func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 	var r string
 	var err error
-	v := cbGet(c)
+	v := cgo.Handle(c).Value()
 	switch cb := v.(type) {
 	case ConversationHandler:
 		r, err = cb.RespondPAM(Style(s), C.GoString(msg))
@@ -75,14 +77,14 @@ type Transaction struct {
 	handle *C.pam_handle_t
 	conv   *C.struct_pam_conv
 	status C.int
-	c      int
+	c      cgo.Handle
 }
 
 // transactionFinalizer cleans up the PAM handle and deletes the callback
 // function.
 func transactionFinalizer(t *Transaction) {
 	C.pam_end(t.handle, t.status)
-	cbDelete(t.c)
+	t.c.Delete()
 }
 
 // Start initiates a new PAM transaction. Service is treated identically to
@@ -117,9 +119,9 @@ func StartConfDir(service, user string, handler ConversationHandler, confDir str
 func start(service, user string, handler ConversationHandler, confDir string) (*Transaction, error) {
 	t := &Transaction{
 		conv: &C.struct_pam_conv{},
-		c:    cbAdd(handler),
+		c:    cgo.NewHandle(handler),
 	}
-	C.init_pam_conv(t.conv, C.long(t.c))
+	C.init_pam_conv(t.conv, C.uintptr_t(t.c))
 	runtime.SetFinalizer(t, transactionFinalizer)
 	s := C.CString(service)
 	defer C.free(unsafe.Pointer(s))
