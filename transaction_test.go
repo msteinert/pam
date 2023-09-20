@@ -168,14 +168,11 @@ func TestPAM_007(t *testing.T) {
 
 func TestPAM_ConfDir(t *testing.T) {
 	u, _ := user.Current()
-	if u.Uid != "0" {
-		t.Skip("run this test as root")
-	}
 	c := Credentials{
 		// the custom service always permits even with wrong password.
 		Password: "wrongsecret",
 	}
-	tx, err := StartConfDir("my-service", "test", c, ".")
+	tx, err := StartConfDir("permit-service", u.Username, c, "test-services")
 	if !CheckPamHasStartConfdir() {
 		if err == nil {
 			t.Fatalf("start should have errored out as pam_start_confdir is not available: %v", err)
@@ -194,13 +191,96 @@ func TestPAM_ConfDir(t *testing.T) {
 
 func TestPAM_ConfDir_FailNoServiceOrUnsupported(t *testing.T) {
 	u, _ := user.Current()
-	if u.Uid != "0" {
-		t.Skip("run this test as root")
-	}
 	c := Credentials{
 		Password: "secret",
 	}
-	_, err := StartConfDir("does-not-exists", "test", c, ".")
+	_, err := StartConfDir("does-not-exists", u.Username, c, ".")
+	if err == nil {
+		t.Fatalf("authenticate #expected an error")
+	}
+	s := err.Error()
+	if len(s) == 0 {
+		t.Fatalf("error #expected an error message")
+	}
+}
+
+func TestPAM_ConfDir_InfoMessage(t *testing.T) {
+	u, _ := user.Current()
+	var infoText string
+	tx, err := StartConfDir("echo-service", u.Username,
+		ConversationFunc(func(s Style, msg string) (string, error) {
+			switch s {
+			case TextInfo:
+				infoText = msg
+				return "", nil
+			}
+			return "", errors.New("unexpected")
+		}), "test-services")
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
+	err = tx.Authenticate(0)
+	if err != nil {
+		t.Fatalf("authenticate #error: %v", err)
+	}
+	if infoText != "This is an info message for user " + u.Username + " on echo-service" {
+		t.Fatalf("Unexpected info message: %v", infoText)
+	}
+}
+
+func TestPAM_ConfDir_Deny(t *testing.T) {
+	u, _ := user.Current()
+	tx, err := StartConfDir("deny-service", u.Username, Credentials{}, "test-services")
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
+	err = tx.Authenticate(0)
+	if err == nil {
+		t.Fatalf("authenticate #expected an error")
+	}
+	s := err.Error()
+	if len(s) == 0 {
+		t.Fatalf("error #expected an error message")
+	}
+}
+
+func TestPAM_ConfDir_PromptForUserName(t *testing.T) {
+	c := Credentials{
+		User: "testuser",
+		// the custom service only cares about correct user name.
+		Password: "wrongsecret",
+	}
+	tx, err := StartConfDir("succeed-if-user-test", "", c, "test-services")
+	if !CheckPamHasStartConfdir() {
+		if err == nil {
+			t.Fatalf("start should have errored out as pam_start_confdir is not available: %v", err)
+		}
+		// nothing else we do, we don't support it.
+		return
+	}
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
+	err = tx.Authenticate(0)
+	if err != nil {
+		t.Fatalf("authenticate #error: %v", err)
+	}
+}
+
+func TestPAM_ConfDir_WrongUserName(t *testing.T) {
+	c := Credentials{
+		User: "wronguser",
+		Password: "wrongsecret",
+	}
+	tx, err := StartConfDir("succeed-if-user-test", "", c, "test-services")
+	if !CheckPamHasStartConfdir() {
+		if err == nil {
+			t.Fatalf("start should have errored out as pam_start_confdir is not available: %v", err)
+		}
+		// nothing else we do, we don't support it.
+		return
+	}
+	err = tx.Authenticate(0)
 	if err == nil {
 		t.Fatalf("authenticate #expected an error")
 	}
