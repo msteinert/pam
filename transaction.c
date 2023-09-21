@@ -11,10 +11,10 @@
 
 int cb_pam_conv(int num_msg, PAM_CONST struct pam_message **msg, struct pam_response **resp, void *appdata_ptr)
 {
-	*resp = calloc(num_msg, sizeof **resp);
 	if (num_msg <= 0 || num_msg > PAM_MAX_NUM_MSG)
 		return PAM_CONV_ERR;
 
+	*resp = calloc(num_msg, sizeof **resp);
 	if (!*resp)
 		return PAM_BUF_ERR;
 
