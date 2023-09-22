@@ -282,7 +282,12 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 }
 
 func (t *Transaction) Error() string {
-	return ReturnType(t.status).Error()
+	return t.Status().Error()
+}
+
+// Status exposes the ReturnType for the last operation
+func (t *Transaction) Status() ReturnType {
+	return ReturnType(t.status)
 }
 
 // Item is a an PAM information type.
