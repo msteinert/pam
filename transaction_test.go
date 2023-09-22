@@ -2,7 +2,10 @@ package pam
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"os/user"
+	"path/filepath"
 	"testing"
 )
 
@@ -164,6 +167,9 @@ func TestPAM_007(t *testing.T) {
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
 	}
+	if tx.Error() != ErrAuth.Error() {
+		t.Fatalf("error #unexpected status %v", tx.Error())
+	}
 }
 
 func TestPAM_ConfDir(t *testing.T) {
@@ -242,6 +248,9 @@ func TestPAM_ConfDir_Deny(t *testing.T) {
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
 	}
+	if tx.Error() != ErrAuth.Error() {
+		t.Fatalf("error #unexpected status %v", tx.Error())
+	}
 }
 
 func TestPAM_ConfDir_PromptForUserName(t *testing.T) {
@@ -287,6 +296,9 @@ func TestPAM_ConfDir_WrongUserName(t *testing.T) {
 	s := err.Error()
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
+	}
+	if tx.Error() != ErrAuth.Error() {
+		t.Fatalf("error #unexpected status %v", tx.Error())
 	}
 }
 
@@ -387,6 +399,114 @@ func TestEnv(t *testing.T) {
 	}
 	if m["VAL3"] != "3" {
 		t.Fatalf("getenvlist #error: expected 3, got %v", m["VAL1"])
+	}
+}
+
+func Test_Error(t *testing.T) {
+	t.Parallel()
+	if !CheckPamHasStartConfdir() {
+		t.Skip("this requires PAM with Conf dir support")
+	}
+
+	statuses := map[string]error{
+		"success":               Error(success),
+		"open_err":              ErrOpen,
+		"symbol_err":            ErrSymbol,
+		"service_err":           ErrService,
+		"system_err":            ErrSystem,
+		"buf_err":               ErrBuf,
+		"perm_denied":           ErrPermDenied,
+		"auth_err":              ErrAuth,
+		"cred_insufficient":     ErrCredInsufficient,
+		"authinfo_unavail":      ErrAuthinfoUnavail,
+		"user_unknown":          ErrUserUnknown,
+		"maxtries":              ErrMaxtries,
+		"new_authtok_reqd":      ErrNewAuthtokReqd,
+		"acct_expired":          ErrAcctExpired,
+		"session_err":           ErrSession,
+		"cred_unavail":          ErrCredUnavail,
+		"cred_expired":          ErrCredExpired,
+		"cred_err":              ErrCred,
+		"no_module_data":        ErrNoModuleData,
+		"conv_err":              ErrConv,
+		"authtok_err":           ErrAuthtok,
+		"authtok_recover_err":   ErrAuthtokRecovery,
+		"authtok_lock_busy":     ErrAuthtokLockBusy,
+		"authtok_disable_aging": ErrAuthtokDisableAging,
+		"try_again":             ErrTryAgain,
+		"ignore":                Error(success), /* Ignore can't be returned */
+		"abort":                 ErrAbort,
+		"authtok_expired":       ErrAuthtokExpired,
+		"module_unknown":        ErrModuleUnknown,
+		"bad_item":              ErrBadItem,
+		"conv_again":            ErrConvAgain,
+		"incomplete":            ErrIncomplete,
+	}
+
+	type Action int
+	const (
+		account Action = iota + 1
+		auth
+		password
+		session
+	)
+	actions := map[string]Action{
+		"account":  account,
+		"auth":     auth,
+		"password": password,
+		"session":  session,
+	}
+
+	c := Credentials{}
+
+	servicePath := t.TempDir()
+
+	for ret, expected := range statuses {
+		ret := ret
+		expected := expected
+		for actionName, action := range actions {
+			actionName := actionName
+			action := action
+			t.Run(fmt.Sprintf("%s %s", ret, actionName), func(t *testing.T) {
+				t.Parallel()
+				serviceName := ret + "-" + actionName
+				serviceFile := filepath.Join(servicePath, serviceName)
+				contents := fmt.Sprintf("%[1]s requisite pam_debug.so "+
+					"auth=%[2]s cred=%[2]s acct=%[2]s prechauthtok=%[2]s "+
+					"chauthtok=%[2]s open_session=%[2]s close_session=%[2]s\n"+
+					"%[1]s requisite pam_permit.so\n", actionName, ret)
+
+				if err := os.WriteFile(serviceFile,
+					[]byte(contents), 0600); err != nil {
+					t.Fatalf("can't create service file %v: %v", serviceFile, err)
+				}
+
+				tx, err := StartConfDir(serviceName, "user", c, servicePath)
+				if err != nil {
+					t.Fatalf("start #error: %v", err)
+				}
+
+				switch action {
+				case account:
+					err = tx.AcctMgmt(0)
+				case auth:
+					err = tx.Authenticate(0)
+				case password:
+					err = tx.ChangeAuthTok(0)
+				case session:
+					err = tx.OpenSession(0)
+				}
+
+				if tx.Error() != expected.Error() {
+					t.Fatalf("error #unexpected status %v", tx.Error())
+				}
+				if tx.Error() == Error(success).Error() && err != nil {
+					t.Fatalf("error #unexpected: %v", err)
+				} else if tx.Error() != Error(success).Error() && err == nil {
+					t.Fatalf("error #expected an error message")
+				}
+			})
+		}
 	}
 }
 
