@@ -23,11 +23,98 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"runtime/cgo"
 	"strings"
 	"unsafe"
 )
+
+// Type for PAM Return types
+type ReturnType int
+
+// Pam Return types
+const (
+	// Successful function return
+	Success ReturnType = C.PAM_SUCCESS
+	// dlopen() failure when dynamically loading a service module
+	OpenErr ReturnType = C.PAM_OPEN_ERR
+	// Symbol not found
+	SymbolErr ReturnType = C.PAM_SYMBOL_ERR
+	// Error in service module
+	ServiceErr ReturnType = C.PAM_SERVICE_ERR
+	// System error
+	SystemErr ReturnType = C.PAM_SYSTEM_ERR
+	// Memory buffer error
+	BufErr ReturnType = C.PAM_BUF_ERR
+	// Permission denied
+	PermDenied ReturnType = C.PAM_PERM_DENIED
+	// Authentication failure
+	AuthErr ReturnType = C.PAM_AUTH_ERR
+	// Can not access authentication data due to insufficient credentials
+	CredInsufficient ReturnType = C.PAM_CRED_INSUFFICIENT
+	// Underlying authentication service can not retrieve authentication
+	// information
+	AuthinfoUnavail ReturnType = C.PAM_AUTHINFO_UNAVAIL
+	// User not known to the underlying authentication module
+	UserUnknown ReturnType = C.PAM_USER_UNKNOWN
+	// An authentication service has maintained a retry count which has been
+	// reached.
+	// No further retries should be attempted
+	Maxtries ReturnType = C.PAM_MAXTRIES
+	// New authentication token required. This is normally returned if the
+	// machine security policies require that the password should be changed
+	// because the password is nil or it has aged
+	NewAuthtokReqd ReturnType = C.PAM_NEW_AUTHTOK_REQD
+	// User account has expired
+	AcctExpired ReturnType = C.PAM_ACCT_EXPIRED
+	// Can not make/remove an entry for the specified session
+	SessionErr ReturnType = C.PAM_SESSION_ERR
+	// Underlying authentication service can not retrieve user credentials
+	CredUnavail ReturnType = C.PAM_CRED_UNAVAIL
+	// User credentials expired
+	CredExpired ReturnType = C.PAM_CRED_EXPIRED
+	// Failure setting user credentials
+	CredErr ReturnType = C.PAM_CRED_ERR
+	// No module specific data is present
+	NoModuleData ReturnType = C.PAM_NO_MODULE_DATA
+	// Conversation error
+	ConvErr ReturnType = C.PAM_CONV_ERR
+	// Authentication token manipulation error
+	AuthtokErr ReturnType = C.PAM_AUTHTOK_ERR
+	// Authentication information cannot be recovered
+	AuthtokRecoveryErr ReturnType = C.PAM_AUTHTOK_RECOVERY_ERR
+	// Authentication token lock busy
+	AuthtokLockBusy ReturnType = C.PAM_AUTHTOK_LOCK_BUSY
+	// Authentication token aging disabled
+	AuthtokDisableAging ReturnType = C.PAM_AUTHTOK_DISABLE_AGING
+	// Preliminary check by password service
+	TryAgain ReturnType = C.PAM_TRY_AGAIN
+	// Ignore underlying account module regardless of whether the control flag
+	// is required, optional, or sufficient
+	Ignore ReturnType = C.PAM_IGNORE
+	// Critical error (?module fail now request)
+	Abort ReturnType = C.PAM_ABORT
+	// user's authentication token has expired
+	AuthtokExpired ReturnType = C.PAM_AUTHTOK_EXPIRED
+	// module is not known
+	ModuleUnknown ReturnType = C.PAM_MODULE_UNKNOWN
+	// Bad item passed to pam_*_item()
+	BadItem ReturnType = C.PAM_BAD_ITEM
+	// conversation function is event driven and data is not available yet
+	ConvAgain ReturnType = C.PAM_CONV_AGAIN
+	// please call this function again to complete authentication stack.
+	// Before calling again, verify that conversation is completed
+	Incomplete ReturnType = C.PAM_INCOMPLETE
+)
+
+func (rt ReturnType) Error() string {
+	return fmt.Sprintf("%d: %s", rt, C.GoString(C.pam_strerror(nil, C.int(rt))))
+}
+
+func (rt ReturnType) toC() C.int {
+	return C.int(rt)
+}
 
 // Style is the type of message that the conversation handler should display.
 type Style int
@@ -99,22 +186,22 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 		if style == BinaryPrompt {
 			bytes, err := cb.RespondPAMBinary(BinaryPointer(msg))
 			if err != nil {
-				return nil, C.PAM_CONV_ERR
+				return nil, ConvAgain.toC()
 			}
-			return (*C.char)(C.CBytes(bytes)), C.PAM_SUCCESS
+			return (*C.char)(C.CBytes(bytes)), Success.toC()
 		} else {
 			r, err = cb.RespondPAM(style, C.GoString(msg))
 		}
 	case ConversationHandler:
 		if style == BinaryPrompt {
-			return nil, C.PAM_AUTHINFO_UNAVAIL
+			return nil, AuthinfoUnavail.toC()
 		}
 		r, err = cb.RespondPAM(style, C.GoString(msg))
 	}
 	if err != nil {
-		return nil, C.PAM_CONV_ERR
+		return nil, ConvErr.toC()
 	}
-	return C.CString(r), C.PAM_SUCCESS
+	return C.CString(r), Success.toC()
 }
 
 // Transaction is the application's handle for a PAM transaction.
@@ -188,14 +275,14 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 		defer C.free(unsafe.Pointer(c))
 		t.status = C.pam_start_confdir(s, u, t.conv, c, &t.handle)
 	}
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return nil, t
 	}
 	return t, nil
 }
 
 func (t *Transaction) Error() string {
-	return C.GoString(C.pam_strerror(t.handle, C.int(t.status)))
+	return ReturnType(t.status).Error()
 }
 
 // Item is a an PAM information type.
@@ -226,7 +313,7 @@ func (t *Transaction) SetItem(i Item, item string) error {
 	cs := unsafe.Pointer(C.CString(item))
 	defer C.free(cs)
 	t.status = C.pam_set_item(t.handle, C.int(i), cs)
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return t
 	}
 	return nil
@@ -236,7 +323,7 @@ func (t *Transaction) SetItem(i Item, item string) error {
 func (t *Transaction) GetItem(i Item) (string, error) {
 	var s unsafe.Pointer
 	t.status = C.pam_get_item(t.handle, C.int(i), &s)
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return "", t
 	}
 	return C.GoString((*C.char)(s)), nil
@@ -275,7 +362,7 @@ const (
 // Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) Authenticate(f Flags) error {
 	t.status = C.pam_authenticate(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return t
 	}
 	return nil
@@ -287,7 +374,7 @@ func (t *Transaction) Authenticate(f Flags) error {
 // Valid flags: EstablishCred, DeleteCred, ReinitializeCred, RefreshCred
 func (t *Transaction) SetCred(f Flags) error {
 	t.status = C.pam_setcred(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return t
 	}
 	return nil
@@ -298,7 +385,7 @@ func (t *Transaction) SetCred(f Flags) error {
 // Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) AcctMgmt(f Flags) error {
 	t.status = C.pam_acct_mgmt(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return t
 	}
 	return nil
@@ -309,7 +396,7 @@ func (t *Transaction) AcctMgmt(f Flags) error {
 // Valid flags: Silent, ChangeExpiredAuthtok
 func (t *Transaction) ChangeAuthTok(f Flags) error {
 	t.status = C.pam_chauthtok(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return t
 	}
 	return nil
@@ -320,7 +407,7 @@ func (t *Transaction) ChangeAuthTok(f Flags) error {
 // Valid flags: Slient
 func (t *Transaction) OpenSession(f Flags) error {
 	t.status = C.pam_open_session(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return t
 	}
 	return nil
@@ -331,7 +418,7 @@ func (t *Transaction) OpenSession(f Flags) error {
 // Valid flags: Silent
 func (t *Transaction) CloseSession(f Flags) error {
 	t.status = C.pam_close_session(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return t
 	}
 	return nil
@@ -346,7 +433,7 @@ func (t *Transaction) PutEnv(nameval string) error {
 	cs := C.CString(nameval)
 	defer C.free(unsafe.Pointer(cs))
 	t.status = C.pam_putenv(t.handle, cs)
-	if t.status != C.PAM_SUCCESS {
+	if t.status != Success.toC() {
 		return t
 	}
 	return nil
