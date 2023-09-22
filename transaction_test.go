@@ -118,6 +118,13 @@ func TestPAM_005(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
+	service, err := tx.GetItem(Service)
+	if err != nil {
+		t.Fatalf("GetItem #error: %v", err)
+	}
+	if service != "passwd" {
+		t.Fatalf("Unexpected service: %v", service)
+	}
 	err = tx.ChangeAuthTok(Silent)
 	if err != nil {
 		t.Fatalf("chauthtok #error: %v", err)
@@ -180,6 +187,13 @@ func TestPAM_ConfDir(t *testing.T) {
 		// nothing else we do, we don't support it.
 		return
 	}
+	service, err := tx.GetItem(Service)
+	if err != nil {
+		t.Fatalf("GetItem #error: %v", err)
+	}
+	if service != "permit-service" {
+		t.Fatalf("Unexpected service: %v", service)
+	}
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
@@ -219,6 +233,13 @@ func TestPAM_ConfDir_InfoMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
+	service, err := tx.GetItem(Service)
+	if err != nil {
+		t.Fatalf("GetItem #error: %v", err)
+	}
+	if service != "echo-service" {
+		t.Fatalf("Unexpected service: %v", service)
+	}
 	err = tx.Authenticate(0)
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
@@ -233,6 +254,13 @@ func TestPAM_ConfDir_Deny(t *testing.T) {
 	tx, err := StartConfDir("deny-service", u.Username, Credentials{}, "test-services")
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
+	}
+	service, err := tx.GetItem(Service)
+	if err != nil {
+		t.Fatalf("GetItem #error: %v", err)
+	}
+	if service != "deny-service" {
+		t.Fatalf("Unexpected service: %v", service)
 	}
 	err = tx.Authenticate(0)
 	if err == nil {
