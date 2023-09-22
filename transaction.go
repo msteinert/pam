@@ -1,11 +1,21 @@
 // Package pam provides a wrapper for the PAM application API.
 package pam
 
+//#cgo CFLAGS: -Wall -std=c99
+//#cgo LDFLAGS: -lpam
+//
 //#include <security/pam_appl.h>
 //#include <stdlib.h>
 //#include <stdint.h>
-//#cgo CFLAGS: -Wall -std=c99
-//#cgo LDFLAGS: -lpam
+//
+//#ifdef PAM_BINARY_PROMPT
+//#define BINARY_PROMPT_IS_SUPPORTED 1
+//#else
+//#include <limits.h>
+//#define PAM_BINARY_PROMPT INT_MAX
+//#define BINARY_PROMPT_IS_SUPPORTED 0
+//#endif
+//
 //void init_pam_conv(struct pam_conv *conv, uintptr_t);
 //int pam_start_confdir(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh) __attribute__ ((weak));
 //int check_pam_start_confdir(void);
@@ -36,6 +46,9 @@ const (
 	// TextInfo indicates the conversation handler should display some
 	// text.
 	TextInfo = C.PAM_TEXT_INFO
+	// BinaryPrompt indicates the conversation handler that should implement
+	// the private binary protocol
+	BinaryPrompt = C.PAM_BINARY_PROMPT
 )
 
 // ConversationHandler is an interface for objects that can be used as
@@ -45,6 +58,23 @@ type ConversationHandler interface {
 	// message Style is PromptEchoOff or PromptEchoOn then the function
 	// should return a response string.
 	RespondPAM(Style, string) (string, error)
+}
+
+// BinaryPointer exposes the type used for the data in a binary conversation
+// it represents a pointer to data that is produced by the module and that
+// must be parsed depending on the protocol in use
+type BinaryPointer unsafe.Pointer
+
+// BinaryConversationHandler is an interface for objects that can be used as
+// conversation callbacks during PAM authentication if binary protocol is going
+// to be supported.
+type BinaryConversationHandler interface {
+	ConversationHandler
+	// RespondPAMBinary receives a pointer to the binary message. It's up to
+	// the receiver to parse it according to the protocol specifications.
+	// The function can return a byte array that will passed as pointer back
+	// to the module.
+	RespondPAMBinary(BinaryPointer) ([]byte, error)
 }
 
 // ConversationFunc is an adapter to allow the use of ordinary functions as
@@ -57,14 +87,29 @@ func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 }
 
 // cbPAMConv is a wrapper for the conversation callback function.
+//
 //export cbPAMConv
 func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 	var r string
 	var err error
 	v := cgo.Handle(c).Value()
+	style := Style(s)
 	switch cb := v.(type) {
+	case BinaryConversationHandler:
+		if style == BinaryPrompt {
+			bytes, err := cb.RespondPAMBinary(BinaryPointer(msg))
+			if err != nil {
+				return nil, C.PAM_CONV_ERR
+			}
+			return (*C.char)(C.CBytes(bytes)), C.PAM_SUCCESS
+		} else {
+			r, err = cb.RespondPAM(style, C.GoString(msg))
+		}
 	case ConversationHandler:
-		r, err = cb.RespondPAM(Style(s), C.GoString(msg))
+		if style == BinaryPrompt {
+			return nil, C.PAM_AUTHINFO_UNAVAIL
+		}
+		r, err = cb.RespondPAM(style, C.GoString(msg))
 	}
 	if err != nil {
 		return nil, C.PAM_CONV_ERR
@@ -117,6 +162,12 @@ func StartConfDir(service, user string, handler ConversationHandler, confDir str
 }
 
 func start(service, user string, handler ConversationHandler, confDir string) (*Transaction, error) {
+	switch handler.(type) {
+	case BinaryConversationHandler:
+		if !CheckPamHasBinaryProtocol() {
+			return nil, errors.New("BinaryConversationHandler() was used, but it is not supported by this platform")
+		}
+	}
 	t := &Transaction{
 		conv: &C.struct_pam_conv{},
 		c:    cgo.NewHandle(handler),
@@ -338,4 +389,9 @@ func (t *Transaction) GetEnvList() (map[string]string, error) {
 // CheckPamHasStartConfdir return if pam on system supports pam_system_confdir
 func CheckPamHasStartConfdir() bool {
 	return C.check_pam_start_confdir() == 0
+}
+
+// CheckPamHasBinaryProtocol return if pam on system supports PAM_BINARY_PROMPT
+func CheckPamHasBinaryProtocol() bool {
+	return C.BINARY_PROMPT_IS_SUPPORTED != 0
 }
