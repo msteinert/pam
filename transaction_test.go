@@ -223,7 +223,7 @@ func TestPAM_ConfDir_InfoMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("authenticate #error: %v", err)
 	}
-	if infoText != "This is an info message for user " + u.Username + " on echo-service" {
+	if infoText != "This is an info message for user "+u.Username+" on echo-service" {
 		t.Fatalf("Unexpected info message: %v", infoText)
 	}
 }
@@ -269,7 +269,7 @@ func TestPAM_ConfDir_PromptForUserName(t *testing.T) {
 
 func TestPAM_ConfDir_WrongUserName(t *testing.T) {
 	c := Credentials{
-		User: "wronguser",
+		User:     "wronguser",
 		Password: "wrongsecret",
 	}
 	tx, err := StartConfDir("succeed-if-user-test", "", c, "test-services")
