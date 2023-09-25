@@ -1,3 +1,5 @@
 coverage.out
 example-module/*.so
 example-module/*.h
+cmd/pam-moduler/tests/*/*.so
+cmd/pam-moduler/tests/*/*.h
