@@ -29,6 +29,12 @@ jobs:
       run: sudo useradd -d /tmp/test -p '$1$Qd8H95T5$RYSZQeoFbEB.gS19zS99A0' -s /bin/false test
     - name: Checkout code
       uses: actions/checkout@v4
+    - name: Generate example module
+      run: |
+        rm -f example-module/pam_go.so
+        go generate -C example-module -v
+        test -e example-module/pam_go.so
+        git diff --exit-code example-module
     - name: Test
       run: sudo go test -v -cover -coverprofile=coverage.out ./...
     - name: Upload coverage reports to Codecov

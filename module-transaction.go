@@ -15,7 +15,9 @@ type ModuleTransaction interface {
 type ModuleHandlerFunc func(ModuleTransaction, Flags, []string) error
 
 // ModuleTransaction is the module-side handle for a PAM transaction.
-type moduleTransaction = transactionBase
+type moduleTransaction struct {
+	transactionBase
+}
 
 // ModuleHandler is an interface for objects that can be used to create
 // PAM modules from go.
@@ -26,4 +28,10 @@ type ModuleHandler interface {
 	CloseSession(ModuleTransaction, Flags, []string) error
 	OpenSession(ModuleTransaction, Flags, []string) error
 	SetCred(ModuleTransaction, Flags, []string) error
+}
+
+// NewModuleTransaction allows initializing a transaction invoker from
+// the module side.
+func NewModuleTransaction(handle NativeHandle) ModuleTransaction {
+	return &moduleTransaction{transactionBase{handle: handle}}
 }
