@@ -242,7 +242,10 @@ func StartFunc(service, user string, handler func(Style, string) (string, error)
 // transaction provides an interface to the remainder of the API.
 func StartConfDir(service, user string, handler ConversationHandler, confDir string) (*Transaction, error) {
 	if !CheckPamHasStartConfdir() {
-		return nil, errors.New("StartConfDir() was used, but the pam version on the system is not recent enough")
+		return nil, &TransactionError{
+			errors.New("StartConfDir() was used, but the pam version on the system is not recent enough"),
+			SystemErr,
+		}
 	}
 
 	return start(service, user, handler, confDir)
@@ -252,7 +255,10 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 	switch handler.(type) {
 	case BinaryConversationHandler:
 		if !CheckPamHasBinaryProtocol() {
-			return nil, errors.New("BinaryConversationHandler() was used, but it is not supported by this platform")
+			return nil, &TransactionError{
+				errors.New("BinaryConversationHandler() was used, but it is not supported by this platform"),
+				SystemErr,
+			}
 		}
 	}
 	t := &Transaction{
@@ -276,9 +282,32 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 		t.status = C.pam_start_confdir(s, u, t.conv, c, &t.handle)
 	}
 	if t.status != Success.toC() {
-		return nil, t
+		return nil, &TransactionError{t, ReturnType(t.status)}
 	}
 	return t, nil
+}
+
+// transactionError is a private interface that is implemented by both
+// TransactionError and Transaction
+type transactionError interface {
+	error
+	Status() ReturnType
+}
+
+// TransactionError extends error to provide more detailed information
+type TransactionError struct {
+	error
+	status ReturnType
+}
+
+// Status exposes the ReturnType for the error
+func (e *TransactionError) Status() ReturnType {
+	return e.status
+}
+
+// Error pretty prints the error from the status message
+func (e *TransactionError) Error() string {
+	return errors.Join(e.error, ReturnType(e.status)).Error()
 }
 
 func (t *Transaction) Error() string {

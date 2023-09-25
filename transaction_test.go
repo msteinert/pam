@@ -222,6 +222,14 @@ func TestPAM_ConfDir_FailNoServiceOrUnsupported(t *testing.T) {
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
 	}
+	switch et := err.(type) {
+	case transactionError:
+		if et.Status() != Abort {
+			t.Fatalf("error #unexpected status: %v", et.Status())
+		}
+	default:
+		t.Fatalf("error #unexpected type: %v", et)
+	}
 }
 
 func TestPAM_ConfDir_InfoMessage(t *testing.T) {
