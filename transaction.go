@@ -124,11 +124,15 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 	return C.CString(r), success
 }
 
+// NativeHandle is the type of the native PAM handle for a transaction so that
+// it can be exported
+type NativeHandle = *C.pam_handle_t
+
 // transactionBase is a handler for a PAM transaction that can be used to
 // group the operations that can be performed both by the application and the
 // module side
 type transactionBase struct {
-	handle     *C.pam_handle_t
+	handle     NativeHandle
 	lastStatus atomic.Int32
 }
 
