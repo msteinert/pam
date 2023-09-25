@@ -257,14 +257,14 @@ func handlePamCall(pamh *C.pam_handle_t, flags C.int, argc C.int,
 		return C.int(pam.ErrIgnore)
 	}
 
-	err := moduleFunc(pam.NewModuleTransaction(pam.NativeHandle(pamh)),
-		pam.Flags(flags), sliceFromArgv(argc, argv))
-
+	mt := pam.NewModuleTransactionInvoker(pam.NativeHandle(pamh))
+	err := mt.InvokeHandler(moduleFunc, pam.Flags(flags),
+		sliceFromArgv(argc, argv))
 	if err == nil {
-		return 0;
+		return 0
 	}
 
-	if (pam.Flags(flags) & pam.Silent) == 0 {
+	if (pam.Flags(flags) & pam.Silent) == 0 && !errors.Is(err, pam.ErrIgnore) {
 		fmt.Fprintf(os.Stderr, "module returned error: %%v\n", err)
 	}
 

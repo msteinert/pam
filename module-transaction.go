@@ -1,6 +1,13 @@
 // Package pam provides a wrapper for the PAM application API.
 package pam
 
+import "C"
+
+import (
+	"errors"
+	"fmt"
+)
+
 // ModuleTransaction is an interface that a pam module transaction
 // should implement.
 type ModuleTransaction interface {
@@ -30,8 +37,55 @@ type ModuleHandler interface {
 	SetCred(ModuleTransaction, Flags, []string) error
 }
 
-// NewModuleTransaction allows initializing a transaction invoker from
+// ModuleTransactionInvoker is an interface that a pam module transaction
+// should implement to redirect requests from C handlers to go,
+type ModuleTransactionInvoker interface {
+	ModuleTransaction
+	InvokeHandler(handler ModuleHandlerFunc, flags Flags, args []string) error
+}
+
+// NewModuleTransactionInvoker allows initializing a transaction invoker from
 // the module side.
-func NewModuleTransaction(handle NativeHandle) ModuleTransaction {
+func NewModuleTransactionInvoker(handle NativeHandle) ModuleTransactionInvoker {
 	return &moduleTransaction{transactionBase{handle: handle}}
+}
+
+func (m *moduleTransaction) InvokeHandler(handler ModuleHandlerFunc,
+	flags Flags, args []string) error {
+	invoker := func() error {
+		if handler == nil {
+			return ErrIgnore
+		}
+		err := handler(m, flags, args)
+		if err != nil {
+			service, _ := m.GetItem(Service)
+
+			var pamErr Error
+			if !errors.As(err, &pamErr) {
+				err = ErrSystem
+			}
+
+			if pamErr == ErrIgnore || service == "" {
+				return err
+			}
+
+			return fmt.Errorf("%s failed: %w", service, err)
+		}
+		return nil
+	}
+	err := invoker()
+	if errors.Is(err, Error(0)) {
+		err = nil
+	}
+	var status int32
+	if err != nil {
+		status = int32(ErrSystem)
+
+		var pamErr Error
+		if errors.As(err, &pamErr) {
+			status = int32(pamErr)
+		}
+	}
+	m.lastStatus.Store(status)
+	return err
 }
