@@ -124,12 +124,20 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 	return C.CString(r), success
 }
 
+// transactionBase is a handler for a PAM transaction that can be used to
+// group the operations that can be performed both by the application and the
+// module side
+type transactionBase struct {
+	handle     *C.pam_handle_t
+	lastStatus atomic.Int32
+}
+
 // Transaction is the application's handle for a PAM transaction.
 type Transaction struct {
-	handle     *C.pam_handle_t
-	conv       *C.struct_pam_conv
-	lastStatus atomic.Int32
-	c          cgo.Handle
+	transactionBase
+
+	conv *C.struct_pam_conv
+	c    cgo.Handle
 }
 
 // End cleans up the PAM handle and deletes the callback function.
@@ -146,7 +154,7 @@ func (t *Transaction) End() error {
 }
 
 // Allows to call pam functions managing return status
-func (t *Transaction) handlePamStatus(cStatus C.int) error {
+func (t *transactionBase) handlePamStatus(cStatus C.int) error {
 	t.lastStatus.Store(int32(cStatus))
 	if status := Error(cStatus); status != success {
 		return status
@@ -268,14 +276,14 @@ const (
 )
 
 // SetItem sets a PAM information item.
-func (t *Transaction) SetItem(i Item, item string) error {
+func (t *transactionBase) SetItem(i Item, item string) error {
 	cs := unsafe.Pointer(C.CString(item))
 	defer C.free(cs)
 	return t.handlePamStatus(C.pam_set_item(t.handle, C.int(i), cs))
 }
 
 // GetItem retrieves a PAM information item.
-func (t *Transaction) GetItem(i Item) (string, error) {
+func (t *transactionBase) GetItem(i Item) (string, error) {
 	var s unsafe.Pointer
 	err := t.handlePamStatus(C.pam_get_item(t.handle, C.int(i), &s))
 	if err != nil {
@@ -360,14 +368,14 @@ func (t *Transaction) CloseSession(f Flags) error {
 // NAME=value will set a variable to a value.
 // NAME= will set a variable to an empty value.
 // NAME (without an "=") will delete a variable.
-func (t *Transaction) PutEnv(nameval string) error {
+func (t *transactionBase) PutEnv(nameval string) error {
 	cs := C.CString(nameval)
 	defer C.free(unsafe.Pointer(cs))
 	return t.handlePamStatus(C.pam_putenv(t.handle, cs))
 }
 
 // GetEnv is used to retrieve a PAM environment variable.
-func (t *Transaction) GetEnv(name string) string {
+func (t *transactionBase) GetEnv(name string) string {
 	cs := C.CString(name)
 	defer C.free(unsafe.Pointer(cs))
 	value := C.pam_getenv(t.handle, cs)
@@ -382,7 +390,7 @@ func next(p **C.char) **C.char {
 }
 
 // GetEnvList returns a copy of the PAM environment as a map.
-func (t *Transaction) GetEnvList() (map[string]string, error) {
+func (t *transactionBase) GetEnvList() (map[string]string, error) {
 	env := make(map[string]string)
 	p := C.pam_getenvlist(t.handle)
 	if p == nil {
