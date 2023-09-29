@@ -27,6 +27,7 @@ import (
 	"runtime"
 	"runtime/cgo"
 	"strings"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -208,14 +209,14 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 type Transaction struct {
 	handle *C.pam_handle_t
 	conv   *C.struct_pam_conv
-	status C.int
+	status int32
 	c      cgo.Handle
 }
 
 // transactionFinalizer cleans up the PAM handle and deletes the callback
 // function.
 func transactionFinalizer(t *Transaction) {
-	C.pam_end(t.handle, t.status)
+	C.pam_end(t.handle, C.int(atomic.LoadInt32(&t.status)))
 	t.c.Delete()
 }
 
@@ -274,15 +275,17 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 		u = C.CString(user)
 		defer C.free(unsafe.Pointer(u))
 	}
+	var status C.int
 	if confDir == "" {
-		t.status = C.pam_start(s, u, t.conv, &t.handle)
+		status = C.pam_start(s, u, t.conv, &t.handle)
 	} else {
 		c := C.CString(confDir)
 		defer C.free(unsafe.Pointer(c))
-		t.status = C.pam_start_confdir(s, u, t.conv, c, &t.handle)
+		status = C.pam_start_confdir(s, u, t.conv, c, &t.handle)
 	}
-	if t.status != Success.toC() {
-		return nil, &TransactionError{t, ReturnType(t.status)}
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
+		return nil, &TransactionError{t, ReturnType(status)}
 	}
 	return t, nil
 }
@@ -314,9 +317,12 @@ func (t *Transaction) Error() string {
 	return t.Status().Error()
 }
 
-// Status exposes the ReturnType for the last operation
+// Status exposes the ReturnType for the last operation, as per its nature
+// this value is not thread-safe and so if multiple goroutines are acting
+// on the same transaction this should not be used, but one should rely on
+// each operation return status.
 func (t *Transaction) Status() ReturnType {
-	return ReturnType(t.status)
+	return ReturnType(atomic.LoadInt32(&t.status))
 }
 
 // Item is a an PAM information type.
@@ -346,8 +352,9 @@ const (
 func (t *Transaction) SetItem(i Item, item string) error {
 	cs := unsafe.Pointer(C.CString(item))
 	defer C.free(cs)
-	t.status = C.pam_set_item(t.handle, C.int(i), cs)
-	if t.status != Success.toC() {
+	status := C.pam_set_item(t.handle, C.int(i), cs)
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
 		return t
 	}
 	return nil
@@ -356,8 +363,9 @@ func (t *Transaction) SetItem(i Item, item string) error {
 // GetItem retrieves a PAM information item.
 func (t *Transaction) GetItem(i Item) (string, error) {
 	var s unsafe.Pointer
-	t.status = C.pam_get_item(t.handle, C.int(i), &s)
-	if t.status != Success.toC() {
+	status := C.pam_get_item(t.handle, C.int(i), &s)
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
 		return "", t
 	}
 	return C.GoString((*C.char)(s)), nil
@@ -395,8 +403,9 @@ const (
 //
 // Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) Authenticate(f Flags) error {
-	t.status = C.pam_authenticate(t.handle, C.int(f))
-	if t.status != Success.toC() {
+	status := C.pam_authenticate(t.handle, C.int(f))
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
 		return t
 	}
 	return nil
@@ -407,8 +416,9 @@ func (t *Transaction) Authenticate(f Flags) error {
 //
 // Valid flags: EstablishCred, DeleteCred, ReinitializeCred, RefreshCred
 func (t *Transaction) SetCred(f Flags) error {
-	t.status = C.pam_setcred(t.handle, C.int(f))
-	if t.status != Success.toC() {
+	status := C.pam_setcred(t.handle, C.int(f))
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
 		return t
 	}
 	return nil
@@ -418,8 +428,9 @@ func (t *Transaction) SetCred(f Flags) error {
 //
 // Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) AcctMgmt(f Flags) error {
-	t.status = C.pam_acct_mgmt(t.handle, C.int(f))
-	if t.status != Success.toC() {
+	status := C.pam_acct_mgmt(t.handle, C.int(f))
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
 		return t
 	}
 	return nil
@@ -429,8 +440,9 @@ func (t *Transaction) AcctMgmt(f Flags) error {
 //
 // Valid flags: Silent, ChangeExpiredAuthtok
 func (t *Transaction) ChangeAuthTok(f Flags) error {
-	t.status = C.pam_chauthtok(t.handle, C.int(f))
-	if t.status != Success.toC() {
+	status := C.pam_chauthtok(t.handle, C.int(f))
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
 		return t
 	}
 	return nil
@@ -440,8 +452,9 @@ func (t *Transaction) ChangeAuthTok(f Flags) error {
 //
 // Valid flags: Slient
 func (t *Transaction) OpenSession(f Flags) error {
-	t.status = C.pam_open_session(t.handle, C.int(f))
-	if t.status != Success.toC() {
+	status := C.pam_open_session(t.handle, C.int(f))
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
 		return t
 	}
 	return nil
@@ -451,8 +464,9 @@ func (t *Transaction) OpenSession(f Flags) error {
 //
 // Valid flags: Silent
 func (t *Transaction) CloseSession(f Flags) error {
-	t.status = C.pam_close_session(t.handle, C.int(f))
-	if t.status != Success.toC() {
+	status := C.pam_close_session(t.handle, C.int(f))
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
 		return t
 	}
 	return nil
@@ -466,8 +480,9 @@ func (t *Transaction) CloseSession(f Flags) error {
 func (t *Transaction) PutEnv(nameval string) error {
 	cs := C.CString(nameval)
 	defer C.free(unsafe.Pointer(cs))
-	t.status = C.pam_putenv(t.handle, cs)
-	if t.status != Success.toC() {
+	status := C.pam_putenv(t.handle, cs)
+	atomic.StoreInt32(&t.status, int32(status))
+	if status != Success.toC() {
 		return t
 	}
 	return nil
@@ -493,7 +508,7 @@ func (t *Transaction) GetEnvList() (map[string]string, error) {
 	env := make(map[string]string)
 	p := C.pam_getenvlist(t.handle)
 	if p == nil {
-		t.status = C.PAM_BUF_ERR
+		atomic.StoreInt32(&t.status, C.PAM_BUF_ERR)
 		return nil, t
 	}
 	for q := p; *q != nil; q = next(q) {
