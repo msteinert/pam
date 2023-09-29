@@ -62,6 +62,12 @@ func Test_NewNullModuleTransaction(t *testing.T) {
 				return nil, err
 			},
 		},
+		"GetUser": {
+			testFunc: func(t *testing.T) (any, error) {
+				t.Helper()
+				return mt.GetUser("prompt")
+			},
+		},
 	}
 
 	for name, tc := range tests {
@@ -231,6 +237,99 @@ func Test_ModuleTransaction_InvokeHandler(t *testing.T) {
 
 			if status != expectedStatus {
 				t.Fatalf("unexpected status: %#v vs %#v", status, expectedStatus)
+			}
+		})
+	}
+}
+
+func Test_MockModuleTransaction(t *testing.T) {
+	t.Parallel()
+
+	mt, _ := NewModuleTransactionInvoker(nil).(*moduleTransaction)
+
+	tests := map[string]struct {
+		testFunc            func(mock *mockModuleTransaction) (any, error)
+		mockExpectations    mockModuleTransactionExpectations
+		mockRetData         mockModuleTransactionReturnedData
+		conversationHandler ConversationHandler
+
+		expectedError error
+		expectedValue any
+		ignoreError   bool
+	}{
+		"GetUser-empty": {
+			mockExpectations: mockModuleTransactionExpectations{
+				UserPrompt: "who are you?"},
+			expectedValue: "",
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.getUserImpl(mock, "who are you?")
+			},
+		},
+		"GetUser-preset-value": {
+			mockExpectations: mockModuleTransactionExpectations{
+				UserPrompt: "who are you?"},
+			mockRetData:   mockModuleTransactionReturnedData{User: "dummy-user"},
+			expectedValue: "dummy-user",
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.getUserImpl(mock, "who are you?")
+			},
+		},
+		"GetUser-conversation-value": {
+			mockExpectations: mockModuleTransactionExpectations{
+				UserPrompt: "who are you?"},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   PromptEchoOn,
+				ExpectedMessage: "who are you?",
+				User:            "returned-dummy-user",
+			},
+			expectedValue: "returned-dummy-user",
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.getUserImpl(mock, "who are you?")
+			},
+		},
+		"GetUser-conversation-error-prompt": {
+			expectedError: ErrConv,
+			mockExpectations: mockModuleTransactionExpectations{
+				UserPrompt: "who are you?"},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   PromptEchoOn,
+				ExpectedMessage: "who are you???",
+			},
+			expectedValue: "",
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.getUserImpl(mock, "who are you?")
+			},
+		},
+		"GetUser-conversation-error-style": {
+			expectedError: ErrConv,
+			mockExpectations: mockModuleTransactionExpectations{
+				UserPrompt: "who are you?"},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   PromptEchoOff,
+				ExpectedMessage: "who are you?",
+			},
+			expectedValue: "",
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.getUserImpl(mock, "who are you?")
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		tc := tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			mock := newMockModuleTransaction(&mockModuleTransaction{T: t,
+				Expectations: tc.mockExpectations, RetData: tc.mockRetData,
+				ConversationHandler: tc.conversationHandler})
+			data, err := tc.testFunc(mock)
+
+			if !tc.ignoreError && !errors.Is(err, tc.expectedError) {
+				t.Fatalf("unexpected err: %#v vs %#v", err, tc.expectedError)
+			}
+
+			if !reflect.DeepEqual(data, tc.expectedValue) {
+				t.Fatalf("data mismatch, %#v vs %#v", data, tc.expectedValue)
 			}
 		})
 	}

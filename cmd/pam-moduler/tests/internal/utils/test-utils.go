@@ -1,6 +1,13 @@
 // Package utils contains the internal test utils
 package utils
 
+import (
+	"errors"
+	"fmt"
+
+	"github.com/msteinert/pam/v2"
+)
+
 // Action represents a PAM action to perform.
 type Action int
 
@@ -105,4 +112,44 @@ type SerializableError struct {
 
 func (e *SerializableError) Error() string {
 	return e.Msg
+}
+
+// Credentials is a test [pam.ConversationHandler] implementation.
+type Credentials struct {
+	User              string
+	Password          string
+	ExpectedMessage   string
+	CheckEmptyMessage bool
+	ExpectedStyle     pam.Style
+	CheckZeroStyle    bool
+	Context           interface{}
+}
+
+// RespondPAM handles PAM string conversations.
+func (c Credentials) RespondPAM(s pam.Style, msg string) (string, error) {
+	if (c.ExpectedMessage != "" || c.CheckEmptyMessage) &&
+		msg != c.ExpectedMessage {
+		return "", errors.Join(pam.ErrConv,
+			&SerializableError{
+				fmt.Sprintf("unexpected prompt: %s vs %s", msg, c.ExpectedMessage),
+			})
+	}
+
+	if (c.ExpectedStyle != 0 || c.CheckZeroStyle) &&
+		s != c.ExpectedStyle {
+		return "", errors.Join(pam.ErrConv,
+			&SerializableError{
+				fmt.Sprintf("unexpected style: %#v vs %#v", s, c.ExpectedStyle),
+			})
+	}
+
+	switch s {
+	case pam.PromptEchoOn:
+		return c.User, nil
+	case pam.PromptEchoOff:
+		return c.Password, nil
+	}
+
+	return "", errors.Join(pam.ErrConv,
+		&SerializableError{fmt.Sprintf("unhandled style: %v", s)})
 }

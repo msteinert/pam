@@ -54,7 +54,8 @@ func (cr *checkedRequest) check(res *Result) error {
 	return cr.r.check(res, cr.exp)
 }
 
-func ensureItem(tx *pam.Transaction, item pam.Item, expected string) error {
+func ensureUser(tx *pam.Transaction, expected string) error {
+	item := pam.User
 	if value, err := tx.GetItem(item); err != nil {
 		return err
 	} else if value != expected {
@@ -152,7 +153,7 @@ func Test_Moduler_IntegrationTesterModule(t *testing.T) {
 					exp: []interface{}{"an-user", nil},
 				}},
 			finish: func(tx *pam.Transaction, l *Listener, ts testState) error {
-				return ensureItem(tx, pam.User, "an-user")
+				return ensureUser(tx, "an-user")
 			},
 		},
 		"set-item-User-preset": {
@@ -167,7 +168,7 @@ func Test_Moduler_IntegrationTesterModule(t *testing.T) {
 					exp: []interface{}{"an-user", nil},
 				}},
 			finish: func(tx *pam.Transaction, l *Listener, ts testState) error {
-				return ensureItem(tx, pam.User, "an-user")
+				return ensureUser(tx, "an-user")
 			},
 		},
 		"set-get-item-User-empty": {
@@ -486,6 +487,59 @@ func Test_Moduler_IntegrationTesterModule(t *testing.T) {
 						list, ts["expected"])
 				}
 				return nil
+			},
+		},
+		"get-user-empty-no-conv-set": {
+			expectedError: pam.ErrConv,
+			checkedRequests: []checkedRequest{{
+				r:   NewRequest("GetUser", "who are you? "),
+				exp: []interface{}{"", pam.ErrConv},
+			}},
+			finish: func(tx *pam.Transaction, l *Listener, ts testState) error {
+				return ensureUser(tx, "")
+			},
+		},
+		"get-user-empty-with-conv": {
+			credentials: utils.Credentials{
+				User:            "replying-user",
+				ExpectedMessage: "who are you? ",
+				ExpectedStyle:   pam.PromptEchoOn,
+			},
+			checkedRequests: []checkedRequest{{
+				r:   NewRequest("GetUser", "who are you? "),
+				exp: []interface{}{"replying-user", nil},
+			}},
+			finish: func(tx *pam.Transaction, l *Listener, ts testState) error {
+				return ensureUser(tx, "replying-user")
+			},
+		},
+		"get-user-preset-without-conv": {
+			setup: func(tx *pam.Transaction, l *Listener, ts testState) error {
+				return tx.SetItem(pam.User, "setup-user")
+			},
+			checkedRequests: []checkedRequest{{
+				r:   NewRequest("GetUser", "who are you? "),
+				exp: []interface{}{"setup-user", nil},
+			}},
+			finish: func(tx *pam.Transaction, l *Listener, ts testState) error {
+				return ensureUser(tx, "setup-user")
+			},
+		},
+		"get-user-preset-with-conv": {
+			credentials: utils.Credentials{
+				User:            "replying-user",
+				ExpectedMessage: "No message should have been shown!",
+				ExpectedStyle:   pam.PromptEchoOn,
+			},
+			setup: func(tx *pam.Transaction, l *Listener, ts testState) error {
+				return tx.SetItem(pam.User, "setup-user")
+			},
+			checkedRequests: []checkedRequest{{
+				r:   NewRequest("GetUser", "who are you? "),
+				exp: []interface{}{"setup-user", nil},
+			}},
+			finish: func(tx *pam.Transaction, l *Listener, ts testState) error {
+				return ensureUser(tx, "setup-user")
 			},
 		},
 	}
