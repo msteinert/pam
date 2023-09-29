@@ -11,7 +11,7 @@
 //
 // For example:
 //
-//  //go:generate go run github.com/msteinert/pam/pam-moduler
+//  //go:generate go run github.com/msteinert/pam/v2/pam-moduler
 //  //go:generate go generate --skip="pam_module"
 //  package main
 //

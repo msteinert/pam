@@ -97,3 +97,12 @@ func (a FallBackModule) String() string {
 		return ""
 	}
 }
+
+// SerializableError is a representation of an error in a way can be serialized.
+type SerializableError struct {
+	Msg string
+}
+
+func (e *SerializableError) Error() string {
+	return e.Msg
+}
