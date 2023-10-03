@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+func ensureNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+}
+
 func Test_NewNullModuleTransaction(t *testing.T) {
 	t.Parallel()
 	mt := moduleTransaction{}
@@ -66,6 +73,24 @@ func Test_NewNullModuleTransaction(t *testing.T) {
 			testFunc: func(t *testing.T) (any, error) {
 				t.Helper()
 				return mt.GetUser("prompt")
+			},
+		},
+		"GetData": {
+			testFunc: func(t *testing.T) (any, error) {
+				t.Helper()
+				return mt.GetData("some-data")
+			},
+		},
+		"SetData": {
+			testFunc: func(t *testing.T) (any, error) {
+				t.Helper()
+				return nil, mt.SetData("foo", []interface{}{})
+			},
+		},
+		"SetData-nil": {
+			testFunc: func(t *testing.T) (any, error) {
+				t.Helper()
+				return nil, mt.SetData("foo", nil)
 			},
 		},
 	}
@@ -311,6 +336,63 @@ func Test_MockModuleTransaction(t *testing.T) {
 			expectedValue: "",
 			testFunc: func(mock *mockModuleTransaction) (any, error) {
 				return mt.getUserImpl(mock, "who are you?")
+			},
+		},
+		"GetData-not-available": {
+			expectedError: ErrNoModuleData,
+			mockExpectations: mockModuleTransactionExpectations{
+				DataKey: "not-available-data"},
+			expectedValue: nil,
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.getDataImpl(mock, "not-available-data")
+			},
+		},
+		"GetData-not-available-other-failure": {
+			expectedError: ErrBuf,
+			mockExpectations: mockModuleTransactionExpectations{
+				DataKey: "not-available-data"},
+			mockRetData:   mockModuleTransactionReturnedData{Status: ErrBuf},
+			expectedValue: nil,
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.getDataImpl(mock, "not-available-data")
+			},
+		},
+		"SetData-empty-nil": {
+			expectedError: ErrNoModuleData,
+			expectedValue: nil,
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				ensureNoError(mock.T, mt.setDataImpl(mock, "", nil))
+				return mt.getDataImpl(mock, "")
+			},
+		},
+		"SetData-empty-to-value": {
+			expectedValue: []string{"hello", "world"},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				ensureNoError(mock.T, mt.setDataImpl(mock, "",
+					[]string{"hello", "world"}))
+				return mt.getDataImpl(mock, "")
+			},
+		},
+		"SetData-to-value": {
+			expectedValue: []interface{}{"a string", true, 0.55, errors.New("oh no")},
+			mockExpectations: mockModuleTransactionExpectations{
+				DataKey: "some-data"},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				ensureNoError(mock.T, mt.setDataImpl(mock, "some-data",
+					[]interface{}{"a string", true, 0.55, errors.New("oh no")}))
+				return mt.getDataImpl(mock, "some-data")
+			},
+		},
+		"SetData-to-value-replacing": {
+			expectedValue: "just a value",
+			mockExpectations: mockModuleTransactionExpectations{
+				DataKey: "replaced-data"},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				ensureNoError(mock.T, mt.setDataImpl(mock, "replaced-data",
+					[]interface{}{"a string", true, 0.55, errors.New("oh no")}))
+				ensureNoError(mock.T, mt.setDataImpl(mock, "replaced-data",
+					"just a value"))
+				return mt.getDataImpl(mock, "replaced-data")
 			},
 		},
 	}

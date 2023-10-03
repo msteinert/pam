@@ -55,8 +55,12 @@ func (m *integrationTesterModule) handleRequest(authReq *authRequest, r *Request
 	}
 
 	var args []reflect.Value
-	for _, arg := range r.ActionArgs {
-		args = append(args, reflect.ValueOf(arg))
+	for i, arg := range r.ActionArgs {
+		if arg == nil {
+			args = append(args, reflect.Zero(method.Type().In(i)))
+		} else {
+			args = append(args, reflect.ValueOf(arg))
+		}
 	}
 
 	res = &Result{Action: "return"}

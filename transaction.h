@@ -1,4 +1,7 @@
+#pragma once
+
 #include <security/pam_appl.h>
+#include <security/pam_modules.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +21,7 @@
 #endif
 
 extern int _go_pam_conv_handler(struct pam_message *, uintptr_t, char **reply);
+extern void _go_pam_data_cleanup(pam_handle_t *, uintptr_t, int status);
 
 static inline int cb_pam_conv(int num_msg, PAM_CONST struct pam_message **msg, struct pam_response **resp, void *appdata_ptr)
 {
@@ -66,4 +70,22 @@ static inline int check_pam_start_confdir(void)
 		return 1;
 
 	return 0;
+}
+
+static inline void data_cleanup(pam_handle_t *pamh, void *data, int error_status)
+{
+	_go_pam_data_cleanup(pamh, (uintptr_t)data, error_status);
+}
+
+static inline int set_data(pam_handle_t *pamh, const char *name, uintptr_t handle)
+{
+	if (handle)
+		return pam_set_data(pamh, name, (void *)handle, data_cleanup);
+
+	return pam_set_data(pamh, name, NULL, NULL);
+}
+
+static inline int get_data(pam_handle_t *pamh, const char *name, uintptr_t *out_handle)
+{
+	return pam_get_data(pamh, name, (const void **)out_handle);
 }

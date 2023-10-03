@@ -542,6 +542,94 @@ func Test_Moduler_IntegrationTesterModule(t *testing.T) {
 				return ensureUser(tx, "setup-user")
 			},
 		},
+		"get-data-not-available": {
+			expectedError: pam.ErrNoModuleData,
+			checkedRequests: []checkedRequest{{
+				r:   NewRequest("GetData", "some-data"),
+				exp: []interface{}{nil, pam.ErrNoModuleData},
+			}},
+		},
+		"set-data-empty-nil": {
+			expectedError: pam.ErrNoModuleData,
+			checkedRequests: []checkedRequest{
+				{
+					r:   NewRequest("SetData", "", nil),
+					exp: []interface{}{nil},
+				},
+				{
+					r:   NewRequest("GetData", ""),
+					exp: []interface{}{nil, pam.ErrNoModuleData},
+				},
+			},
+		},
+		"set-data-empty-to-value": {
+			checkedRequests: []checkedRequest{
+				{
+					r:   NewRequest("SetData", "", []string{"hello", "world"}),
+					exp: []interface{}{nil},
+				},
+				{
+					r:   NewRequest("GetData", ""),
+					exp: []interface{}{[]string{"hello", "world"}, nil},
+				},
+			},
+		},
+		"set-data-to-value": {
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("SetData", "some-error-data",
+						utils.SerializableError{Msg: "An error"}),
+					exp: []interface{}{nil},
+				},
+				{
+					r:   NewRequest("GetData", "some-error-data"),
+					exp: []interface{}{utils.SerializableError{Msg: "An error"}, nil},
+				},
+			},
+		},
+		"set-data-to-value-replacing": {
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("SetData", "some-data",
+						utils.SerializableError{Msg: "An error"}),
+					exp: []interface{}{nil},
+				},
+				{
+					r:   NewRequest("GetData", "some-data"),
+					exp: []interface{}{utils.SerializableError{Msg: "An error"}, nil},
+				},
+				{
+					r:   NewRequest("SetData", "some-data", "Hello"),
+					exp: []interface{}{nil},
+				},
+				{
+					r:   NewRequest("GetData", "some-data"),
+					exp: []interface{}{"Hello", nil},
+				},
+			},
+		},
+		"set-data-to-value-unset": {
+			expectedError: pam.ErrNoModuleData,
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("SetData", "some-data",
+						utils.SerializableError{Msg: "An error"}),
+					exp: []interface{}{nil},
+				},
+				{
+					r:   NewRequest("GetData", "some-data"),
+					exp: []interface{}{utils.SerializableError{Msg: "An error"}, nil},
+				},
+				{
+					r:   NewRequest("SetData", "some-data", nil),
+					exp: []interface{}{nil},
+				},
+				{
+					r:   NewRequest("GetData", "some-data"),
+					exp: []interface{}{nil, pam.ErrNoModuleData},
+				},
+			},
+		},
 	}
 
 	for name, tc := range tests {
@@ -771,6 +859,24 @@ func Test_Moduler_IntegrationTesterModule_Authenticate(t *testing.T) {
 				{
 					r:   NewRequest("PutEnv", "FooBar=Baz"),
 					exp: []interface{}{pam.ErrAbort},
+				},
+			},
+		},
+		"SetData-nil": {
+			expectedError: pam.ErrSystem,
+			checkedRequests: []checkedRequest{
+				{
+					r:   NewRequest("SetData", "some-data", nil),
+					exp: []interface{}{pam.ErrSystem},
+				},
+			},
+		},
+		"SetData": {
+			expectedError: pam.ErrSystem,
+			checkedRequests: []checkedRequest{
+				{
+					r:   NewRequest("SetData", "some-data", true),
+					exp: []interface{}{pam.ErrSystem},
 				},
 			},
 		},

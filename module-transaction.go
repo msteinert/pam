@@ -2,18 +2,14 @@
 package pam
 
 /*
-#cgo CFLAGS: -Wall -std=c99
-#cgo LDFLAGS: -lpam
-
-#include <security/pam_modules.h>
-#include <stdlib.h>
-#include <stdint.h>
+#include "transaction.h"
 */
 import "C"
 
 import (
 	"errors"
 	"fmt"
+	"runtime/cgo"
 	"unsafe"
 )
 
@@ -26,6 +22,8 @@ type ModuleTransaction interface {
 	GetEnv(name string) string
 	GetEnvList() (map[string]string, error)
 	GetUser(prompt string) (string, error)
+	SetData(key string, data any) error
+	GetData(key string) (any, error)
 }
 
 // ModuleHandlerFunc is a function type used by the ModuleHandler.
@@ -102,6 +100,8 @@ func (m *moduleTransaction) InvokeHandler(handler ModuleHandlerFunc,
 
 type moduleTransactionIface interface {
 	getUser(outUser **C.char, prompt *C.char) C.int
+	setData(key *C.char, handle C.uintptr_t) C.int
+	getData(key *C.char, outHandle *C.uintptr_t) C.int
 }
 
 func (m *moduleTransaction) getUser(outUser **C.char, prompt *C.char) C.int {
@@ -126,4 +126,57 @@ func (m *moduleTransaction) getUserImpl(iface moduleTransactionIface,
 // no user is currently set in PAM.
 func (m *moduleTransaction) GetUser(prompt string) (string, error) {
 	return m.getUserImpl(m, prompt)
+}
+
+// SetData allows to save any value in the module data that is preserved
+// during the whole time the module is loaded.
+func (m *moduleTransaction) SetData(key string, data any) error {
+	return m.setDataImpl(m, key, data)
+}
+
+func (m *moduleTransaction) setData(key *C.char, handle C.uintptr_t) C.int {
+	return C.set_data(m.handle, key, handle)
+}
+
+// setDataImpl is the implementation for SetData for testing purposes.
+func (m *moduleTransaction) setDataImpl(iface moduleTransactionIface,
+	key string, data any) error {
+	var cKey = C.CString(key)
+	defer C.free(unsafe.Pointer(cKey))
+	var handle cgo.Handle
+	if data != nil {
+		handle = cgo.NewHandle(data)
+	}
+	return m.handlePamStatus(iface.setData(cKey, C.uintptr_t(handle)))
+}
+
+//export _go_pam_data_cleanup
+func _go_pam_data_cleanup(h NativeHandle, handle C.uintptr_t, status C.int) {
+	cgo.Handle(handle).Delete()
+}
+
+// GetData allows to get any value from the module data saved using SetData
+// that is preserved across the whole time the module is loaded.
+func (m *moduleTransaction) GetData(key string) (any, error) {
+	return m.getDataImpl(m, key)
+}
+
+func (m *moduleTransaction) getData(key *C.char, outHandle *C.uintptr_t) C.int {
+	return C.get_data(m.handle, key, outHandle)
+}
+
+// getDataImpl is the implementation for GetData for testing purposes.
+func (m *moduleTransaction) getDataImpl(iface moduleTransactionIface,
+	key string) (any, error) {
+	var cKey = C.CString(key)
+	defer C.free(unsafe.Pointer(cKey))
+	var handle C.uintptr_t
+	if err := m.handlePamStatus(iface.getData(cKey, &handle)); err != nil {
+		return nil, err
+	}
+	if goHandle := cgo.Handle(handle); goHandle != cgo.Handle(0) {
+		return goHandle.Value(), nil
+	}
+
+	return nil, m.handlePamStatus(C.int(ErrNoModuleData))
 }
