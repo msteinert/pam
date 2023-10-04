@@ -630,6 +630,194 @@ func Test_Moduler_IntegrationTesterModule(t *testing.T) {
 				},
 			},
 		},
+		"start-conv-no-conv-set": {
+			expectedError: pam.ErrConv,
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableStringConvRequest{
+						pam.TextInfo,
+						"hello PAM!",
+					}),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+				{
+					r:   NewRequest("StartStringConv", pam.TextInfo, "hello PAM!"),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+			},
+		},
+		"start-conv-prompt-text-info": {
+			credentials: utils.Credentials{
+				ExpectedMessage: "hello PAM!",
+				ExpectedStyle:   pam.TextInfo,
+				TextInfo:        "nice to see you, Go!",
+			},
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableStringConvRequest{
+						pam.TextInfo,
+						"hello PAM!",
+					}),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.TextInfo,
+						"nice to see you, Go!",
+					}, nil},
+				},
+				{
+					r: NewRequest("StartStringConv", pam.TextInfo, "hello PAM!"),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.TextInfo,
+						"nice to see you, Go!",
+					}, nil},
+				},
+				{
+					r: NewRequest("StartStringConvf", pam.TextInfo, "hello %s!", "PAM"),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.TextInfo,
+						"nice to see you, Go!",
+					}, nil},
+				},
+			},
+		},
+		"start-conv-prompt-error-msg": {
+			credentials: utils.Credentials{
+				ExpectedMessage: "This is wrong, PAM!",
+				ExpectedStyle:   pam.ErrorMsg,
+				ErrorMsg:        "ops, sorry...",
+			},
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableStringConvRequest{
+						pam.ErrorMsg,
+						"This is wrong, PAM!",
+					}),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.ErrorMsg,
+						"ops, sorry...",
+					}, nil},
+				},
+				{
+					r: NewRequest("StartStringConv", pam.ErrorMsg,
+						"This is wrong, PAM!",
+					),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.ErrorMsg,
+						"ops, sorry...",
+					}, nil},
+				},
+				{
+					r: NewRequest("StartStringConvf", pam.ErrorMsg,
+						"This is wrong, %s!", "PAM",
+					),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.ErrorMsg,
+						"ops, sorry...",
+					}, nil},
+				},
+			},
+		},
+		"start-conv-prompt-echo-on": {
+			credentials: utils.Credentials{
+				ExpectedMessage: "Give me your non-private infos",
+				ExpectedStyle:   pam.PromptEchoOn,
+				EchoOn:          "here's my public data",
+			},
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableStringConvRequest{
+						pam.PromptEchoOn,
+						"Give me your non-private infos",
+					}),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.PromptEchoOn,
+						"here's my public data",
+					}, nil},
+				},
+				{
+					r: NewRequest("StartStringConv", pam.PromptEchoOn,
+						"Give me your non-private infos",
+					),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.PromptEchoOn,
+						"here's my public data",
+					}, nil},
+				},
+			},
+		},
+		"start-conv-prompt-echo-off": {
+			credentials: utils.Credentials{
+				ExpectedMessage: "Give me your super-secret data",
+				ExpectedStyle:   pam.PromptEchoOff,
+				EchoOff:         "here's my private token",
+			},
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableStringConvRequest{
+						pam.PromptEchoOff,
+						"Give me your super-secret data",
+					}),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.PromptEchoOff,
+						"here's my private token",
+					}, nil},
+				},
+				{
+					r: NewRequest("StartStringConv", pam.PromptEchoOff,
+						"Give me your super-secret data",
+					),
+					exp: []interface{}{SerializableStringConvResponse{
+						pam.PromptEchoOff,
+						"here's my private token",
+					}, nil},
+				},
+			},
+		},
+		"start-conv-text-info-handle-failure-message-mismatch": {
+			expectedError: pam.ErrConv,
+			credentials: utils.Credentials{
+				ExpectedMessage: "This is an info message",
+				ExpectedStyle:   pam.TextInfo,
+				TextInfo:        "And this is what is returned",
+			},
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableStringConvRequest{
+						pam.TextInfo,
+						"This should have been an info message, but is not",
+					}),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+				{
+					r: NewRequest("StartStringConv", pam.TextInfo,
+						"This should have been an info message, but is not",
+					),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+			},
+		},
+		"start-conv-text-info-handle-failure-style-mismatch": {
+			expectedError: pam.ErrConv,
+			credentials: utils.Credentials{
+				ExpectedMessage: "This is an info message",
+				ExpectedStyle:   pam.PromptEchoOff,
+				TextInfo:        "And this is what is returned",
+			},
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableStringConvRequest{
+						pam.TextInfo,
+						"This is an info message",
+					}),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+				{
+					r: NewRequest("StartStringConv", pam.TextInfo,
+						"This is an info message",
+					),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+			},
+		},
 	}
 
 	for name, tc := range tests {
@@ -879,6 +1067,23 @@ func Test_Moduler_IntegrationTesterModule_Authenticate(t *testing.T) {
 					exp: []interface{}{pam.ErrSystem},
 				},
 			},
+		},
+		"StartConv": {
+			expectedError: pam.ErrSystem,
+			checkedRequests: []checkedRequest{{
+				r: NewRequest("StartConv", SerializableStringConvRequest{
+					pam.TextInfo,
+					"hello PAM!",
+				}),
+				exp: []interface{}{nil, pam.ErrSystem},
+			}},
+		},
+		"StartStringConv": {
+			expectedError: pam.ErrSystem,
+			checkedRequests: []checkedRequest{{
+				r:   NewRequest("StartStringConv", pam.TextInfo, "hello PAM!"),
+				exp: []interface{}{nil, pam.ErrSystem},
+			}},
 		},
 	}
 

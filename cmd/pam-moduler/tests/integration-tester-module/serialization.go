@@ -24,12 +24,30 @@ func (e *SerializablePamError) Error() string {
 	return e.RetStatus.Error()
 }
 
+// SerializableStringConvRequest is a serializable string request.
+type SerializableStringConvRequest struct {
+	Style   pam.Style
+	Request string
+}
+
+// SerializableStringConvResponse is a serializable string response.
+type SerializableStringConvResponse struct {
+	Style    pam.Style
+	Response string
+}
+
 func init() {
 	gob.Register(map[string]string{})
 	gob.Register(Request{})
 	gob.Register(pam.Item(0))
 	gob.Register(pam.Error(0))
+	gob.Register(pam.Style(0))
+	gob.Register([]pam.ConvResponse{})
 	gob.RegisterName("main.SerializablePamError",
 		SerializablePamError{})
+	gob.RegisterName("main.SerializableStringConvRequest",
+		SerializableStringConvRequest{})
+	gob.RegisterName("main.SerializableStringConvResponse",
+		SerializableStringConvResponse{})
 	gob.Register(utils.SerializableError{})
 }

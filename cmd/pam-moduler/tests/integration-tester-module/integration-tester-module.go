@@ -56,10 +56,16 @@ func (m *integrationTesterModule) handleRequest(authReq *authRequest, r *Request
 
 	var args []reflect.Value
 	for i, arg := range r.ActionArgs {
-		if arg == nil {
-			args = append(args, reflect.Zero(method.Type().In(i)))
-		} else {
-			args = append(args, reflect.ValueOf(arg))
+		switch v := arg.(type) {
+		case SerializableStringConvRequest:
+			args = append(args, reflect.ValueOf(
+				pam.NewStringConvRequest(v.Style, v.Request)))
+		default:
+			if arg == nil {
+				args = append(args, reflect.Zero(method.Type().In(i)))
+			} else {
+				args = append(args, reflect.ValueOf(arg))
+			}
 		}
 	}
 
@@ -67,6 +73,9 @@ func (m *integrationTesterModule) handleRequest(authReq *authRequest, r *Request
 	for _, ret := range method.Call(args) {
 		iface := ret.Interface()
 		switch value := iface.(type) {
+		case pam.StringConvResponse:
+			res.ActionArgs = append(res.ActionArgs,
+				SerializableStringConvResponse{value.Style(), value.Response()})
 		case pam.Error:
 			authReq.lastError = value
 			res.ActionArgs = append(res.ActionArgs, value)

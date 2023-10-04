@@ -8,6 +8,12 @@ import (
 	"testing"
 )
 
+type customConvRequest int
+
+func (r customConvRequest) Style() Style {
+	return Style(r)
+}
+
 func ensureNoError(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
@@ -91,6 +97,33 @@ func Test_NewNullModuleTransaction(t *testing.T) {
 			testFunc: func(t *testing.T) (any, error) {
 				t.Helper()
 				return nil, mt.SetData("foo", nil)
+			},
+		},
+		"StartConv-StringConv": {
+			testFunc: func(t *testing.T) (any, error) {
+				t.Helper()
+				return mt.StartConv(NewStringConvRequest(TextInfo, "a prompt"))
+			},
+		},
+		"StartStringConv": {
+			testFunc: func(t *testing.T) (any, error) {
+				t.Helper()
+				return mt.StartStringConv(TextInfo, "a prompt")
+			},
+		},
+		"StartStringConvf": {
+			testFunc: func(t *testing.T) (any, error) {
+				t.Helper()
+				return mt.StartStringConvf(TextInfo, "a prompt %s", "with info")
+			},
+		},
+		"StartConvMulti": {
+			testFunc: func(t *testing.T) (any, error) {
+				t.Helper()
+				return mt.StartConvMulti([]ConvRequest{
+					NewStringConvRequest(TextInfo, "a prompt"),
+					NewStringConvRequest(ErrorMsg, "another prompt"),
+				})
 			},
 		},
 	}
@@ -393,6 +426,225 @@ func Test_MockModuleTransaction(t *testing.T) {
 				ensureNoError(mock.T, mt.setDataImpl(mock, "replaced-data",
 					"just a value"))
 				return mt.getDataImpl(mock, "replaced-data")
+			},
+		},
+		"StartConv-no-conv-set": {
+			expectedError: ErrConv,
+			expectedValue: nil,
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvImpl(mock, StringConvRequest{
+					TextInfo,
+					"hello PAM!",
+				})
+			},
+		},
+		"StartConv-text-info": {
+			expectedValue: stringConvResponse{TextInfo, "nice to see you, Go!"},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   TextInfo,
+				ExpectedMessage: "hello PAM!",
+				TextInfo:        "nice to see you, Go!",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvImpl(mock, StringConvRequest{
+					TextInfo,
+					"hello PAM!",
+				})
+			},
+		},
+		"StartConv-error-msg": {
+			expectedValue: stringConvResponse{ErrorMsg, "ops, sorry..."},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   ErrorMsg,
+				ExpectedMessage: "This is wrong, PAM!",
+				ErrorMsg:        "ops, sorry...",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvImpl(mock, StringConvRequest{
+					ErrorMsg,
+					"This is wrong, PAM!",
+				})
+			},
+		},
+		"StartConv-prompt-echo-on": {
+			expectedValue: stringConvResponse{PromptEchoOn, "here's my public data"},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   PromptEchoOn,
+				ExpectedMessage: "Give me your non-private infos",
+				PromptEchoOn:    "here's my public data",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvImpl(mock, StringConvRequest{
+					PromptEchoOn,
+					"Give me your non-private infos",
+				})
+			},
+		},
+		"StartConv-prompt-echo-off": {
+			expectedValue: stringConvResponse{PromptEchoOff, "here's my private data"},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   PromptEchoOff,
+				ExpectedMessage: "Give me your private secrets",
+				PromptEchoOff:   "here's my private data",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvImpl(mock, StringConvRequest{
+					PromptEchoOff,
+					"Give me your private secrets",
+				})
+			},
+		},
+		"StartConv-unknown-style": {
+			expectedError: ErrConv,
+			expectedValue: nil,
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   Style(9999),
+				ExpectedMessage: "hello PAM!",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvImpl(mock, StringConvRequest{
+					Style(9999),
+					"hello PAM!",
+				})
+			},
+		},
+		"StartConv-unknown-style-response": {
+			expectedError: ErrConv,
+			expectedValue: nil,
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:      Style(9999),
+				ExpectedMessage:    "hello PAM!",
+				IgnoreUnknownStyle: true,
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvImpl(mock, StringConvRequest{
+					Style(9999),
+					"hello PAM!",
+				})
+			},
+		},
+		"StartStringConv-text-info": {
+			expectedValue: stringConvResponse{TextInfo, "nice to see you, Go!"},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   TextInfo,
+				ExpectedMessage: "hello PAM!",
+				TextInfo:        "nice to see you, Go!",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startStringConvImpl(mock, TextInfo,
+					"hello PAM!")
+			},
+		},
+		"StartStringConv-error-msg": {
+			expectedValue: stringConvResponse{ErrorMsg, "ops, sorry..."},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   ErrorMsg,
+				ExpectedMessage: "This is wrong, PAM!",
+				ErrorMsg:        "ops, sorry...",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startStringConvImpl(mock, ErrorMsg,
+					"This is wrong, PAM!")
+			},
+		},
+		"StartStringConv-prompt-echo-on": {
+			expectedValue: stringConvResponse{PromptEchoOn, "here's my public data"},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   PromptEchoOn,
+				ExpectedMessage: "Give me your non-private infos",
+				PromptEchoOn:    "here's my public data",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startStringConvImpl(mock, PromptEchoOn,
+					"Give me your non-private infos")
+			},
+		},
+		"StartStringConv-prompt-echo-off": {
+			expectedValue: stringConvResponse{PromptEchoOff, "here's my private data"},
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   PromptEchoOff,
+				ExpectedMessage: "Give me your private secrets",
+				PromptEchoOff:   "here's my private data",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startStringConvImpl(mock, PromptEchoOff,
+					"Give me your private secrets")
+			},
+		},
+		"StartStringConv-binary": {
+			expectedError: ErrConv,
+			expectedValue: nil,
+			conversationHandler: mockConversationHandler{
+				ExpectedStyle:   BinaryPrompt,
+				ExpectedMessage: "require binary data",
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startStringConvImpl(mock, PromptEchoOff,
+					"require binary data")
+			},
+		},
+		"StartConvMulti-missing": {
+			expectedError:       ErrConv,
+			expectedValue:       ([]ConvResponse)(nil),
+			conversationHandler: mockConversationHandler{},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvMultiImpl(mock, nil)
+			},
+		},
+		"StartConvMulti-too-many": {
+			expectedError:       ErrConv,
+			expectedValue:       ([]ConvResponse)(nil),
+			conversationHandler: mockConversationHandler{},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				reqs := [maxNumMsg + 1]ConvRequest{}
+				return mt.startConvMultiImpl(mock, reqs[:])
+			},
+		},
+		"StartConvMulti-unexpected-style": {
+			expectedError:       ErrConv,
+			expectedValue:       ([]ConvResponse)(nil),
+			conversationHandler: mockConversationHandler{},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				var req ConvRequest = customConvRequest(0xdeadbeef)
+				return mt.startConvMultiImpl(mock, []ConvRequest{req})
+			},
+		},
+		"StartConvMulti-string-as-binary": {
+			expectedError:       ErrConv,
+			expectedValue:       ([]ConvResponse)(nil),
+			conversationHandler: mockConversationHandler{},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvMultiImpl(mock, []ConvRequest{
+					NewStringConvRequest(BinaryPrompt, "no binary!"),
+				})
+			},
+		},
+		"StartConvMulti-all-types": {
+			expectedValue: []ConvResponse{
+				stringConvResponse{TextInfo, "nice to see you, Go!"},
+				stringConvResponse{ErrorMsg, "ops, sorry..."},
+				stringConvResponse{PromptEchoOn, "here's my public data"},
+				stringConvResponse{PromptEchoOff, "here's my private data"},
+			},
+			conversationHandler: mockConversationHandler{
+				TextInfo:      "nice to see you, Go!",
+				ErrorMsg:      "ops, sorry...",
+				PromptEchoOn:  "here's my public data",
+				PromptEchoOff: "here's my private data",
+				ExpectedMessagesByStyle: map[Style]string{
+					TextInfo:      "hello PAM!",
+					ErrorMsg:      "This is wrong, PAM!",
+					PromptEchoOn:  "Give me your non-private infos",
+					PromptEchoOff: "Give me your private secrets",
+				},
+			},
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvMultiImpl(mock, []ConvRequest{
+					NewStringConvRequest(TextInfo, "hello PAM!"),
+					NewStringConvRequest(ErrorMsg, "This is wrong, PAM!"),
+					NewStringConvRequest(PromptEchoOn, "Give me your non-private infos"),
+					NewStringConvRequest(PromptEchoOff, "Give me your private secrets"),
+				})
 			},
 		},
 	}

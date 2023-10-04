@@ -118,6 +118,10 @@ func (e *SerializableError) Error() string {
 type Credentials struct {
 	User              string
 	Password          string
+	EchoOn            string
+	EchoOff           string
+	TextInfo          string
+	ErrorMsg          string
 	ExpectedMessage   string
 	CheckEmptyMessage bool
 	ExpectedStyle     pam.Style
@@ -145,9 +149,19 @@ func (c Credentials) RespondPAM(s pam.Style, msg string) (string, error) {
 
 	switch s {
 	case pam.PromptEchoOn:
-		return c.User, nil
+		if c.User != "" {
+			return c.User, nil
+		}
+		return c.EchoOn, nil
 	case pam.PromptEchoOff:
-		return c.Password, nil
+		if c.Password != "" {
+			return c.Password, nil
+		}
+		return c.EchoOff, nil
+	case pam.TextInfo:
+		return c.TextInfo, nil
+	case pam.ErrorMsg:
+		return c.ErrorMsg, nil
 	}
 
 	return "", errors.Join(pam.ErrConv,

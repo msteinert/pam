@@ -7,6 +7,8 @@ package pam
 #include <stdint.h>
 #include <stdlib.h>
 #include <security/pam_modules.h>
+
+void init_pam_conv(struct pam_conv *conv, uintptr_t appdata);
 */
 import "C"
 
@@ -14,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"runtime/cgo"
 	"testing"
 	"unsafe"
 )
@@ -110,17 +113,41 @@ func (m *mockModuleTransaction) setData(key *C.char, handle C.uintptr_t) C.int {
 	return C.int(m.RetData.Status)
 }
 
+func (m *mockModuleTransaction) getConv() (*C.struct_pam_conv, error) {
+	if m.ConversationHandler != nil {
+		conv := C.struct_pam_conv{}
+		handler := cgo.NewHandle(m.ConversationHandler)
+		C.init_pam_conv(&conv, C.uintptr_t(handler))
+		return &conv, nil
+	}
+	if C.int(m.RetData.Status) != success {
+		return nil, m.RetData.Status
+	}
+	return nil, nil
+}
+
 type mockConversationHandler struct {
-	User              string
-	ExpectedMessage   string
-	CheckEmptyMessage bool
-	ExpectedStyle     Style
-	CheckZeroStyle    bool
+	User                    string
+	PromptEchoOn            string
+	PromptEchoOff           string
+	TextInfo                string
+	ErrorMsg                string
+	ExpectedMessage         string
+	ExpectedMessagesByStyle map[Style]string
+	CheckEmptyMessage       bool
+	ExpectedStyle           Style
+	CheckZeroStyle          bool
+	IgnoreUnknownStyle      bool
 }
 
 func (c mockConversationHandler) RespondPAM(s Style, msg string) (string, error) {
-	if (c.ExpectedMessage != "" || c.CheckEmptyMessage) &&
-		msg != c.ExpectedMessage {
+	var expectedMsg = c.ExpectedMessage
+	if msg, ok := c.ExpectedMessagesByStyle[s]; ok {
+		expectedMsg = msg
+	}
+
+	if (expectedMsg != "" || c.CheckEmptyMessage) &&
+		msg != expectedMsg {
 		return "", fmt.Errorf("%w: unexpected prompt: %s vs %s",
 			ErrConv, msg, c.ExpectedMessage)
 	}
@@ -133,7 +160,20 @@ func (c mockConversationHandler) RespondPAM(s Style, msg string) (string, error)
 
 	switch s {
 	case PromptEchoOn:
-		return c.User, nil
+		if c.User != "" {
+			return c.User, nil
+		}
+		return c.PromptEchoOn, nil
+	case PromptEchoOff:
+		return c.PromptEchoOff, nil
+	case TextInfo:
+		return c.TextInfo, nil
+	case ErrorMsg:
+		return c.ErrorMsg, nil
+	}
+
+	if c.IgnoreUnknownStyle {
+		return c.ExpectedMessage, nil
 	}
 
 	return "", fmt.Errorf("%w: unhandled style: %v", ErrConv, s)
