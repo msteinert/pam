@@ -9,7 +9,10 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"runtime/cgo"
+	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -29,6 +32,7 @@ type ModuleTransaction interface {
 	StartStringConv(style Style, prompt string) (StringConvResponse, error)
 	StartStringConvf(style Style, format string, args ...interface{}) (
 		StringConvResponse, error)
+	StartBinaryConv([]byte) (BinaryConvResponse, error)
 	StartConv(ConvRequest) (ConvResponse, error)
 	StartConvMulti([]ConvRequest) ([]ConvResponse, error)
 }
@@ -110,6 +114,7 @@ type moduleTransactionIface interface {
 	setData(key *C.char, handle C.uintptr_t) C.int
 	getData(key *C.char, outHandle *C.uintptr_t) C.int
 	getConv() (*C.struct_pam_conv, error)
+	hasBinaryProtocol() bool
 	startConv(conv *C.struct_pam_conv, nMsg C.int,
 		messages **C.struct_pam_message,
 		outResponses **C.struct_pam_response) C.int
@@ -261,6 +266,143 @@ func (s stringConvResponse) Response() string {
 	return s.response
 }
 
+// BinaryFinalizer is a type of function that can be used to release
+// the binary when it's not required anymore
+type BinaryFinalizer func(BinaryPointer)
+
+// BinaryConvRequester is the interface that binary ConvRequests should
+// implement
+type BinaryConvRequester interface {
+	ConvRequest
+	Pointer() BinaryPointer
+	CreateResponse(BinaryPointer) BinaryConvResponse
+	Release()
+}
+
+// BinaryConvRequest is a ConvRequest for performing binary conversations.
+type BinaryConvRequest struct {
+	ptr               atomic.Uintptr
+	finalizer         BinaryFinalizer
+	responseFinalizer BinaryFinalizer
+}
+
+// NewBinaryConvRequestFull creates a new BinaryConvRequest with finalizer
+// for response BinaryResponse.
+func NewBinaryConvRequestFull(ptr BinaryPointer, finalizer BinaryFinalizer,
+	responseFinalizer BinaryFinalizer) *BinaryConvRequest {
+	b := &BinaryConvRequest{finalizer: finalizer, responseFinalizer: responseFinalizer}
+	b.ptr.Store(uintptr(ptr))
+	if ptr == nil || finalizer == nil {
+		return b
+	}
+
+	// The ownership of the data here is temporary
+	runtime.SetFinalizer(b, func(b *BinaryConvRequest) { b.Release() })
+	return b
+}
+
+// NewBinaryConvRequest creates a new BinaryConvRequest
+func NewBinaryConvRequest(ptr BinaryPointer, finalizer BinaryFinalizer) *BinaryConvRequest {
+	return NewBinaryConvRequestFull(ptr, finalizer, finalizer)
+}
+
+// NewBinaryConvRequestFromBytes creates a new BinaryConvRequest from an array
+// of bytes.
+func NewBinaryConvRequestFromBytes(bytes []byte) *BinaryConvRequest {
+	if bytes == nil {
+		return &BinaryConvRequest{}
+	}
+	return NewBinaryConvRequest(BinaryPointer(C.CBytes(bytes)),
+		func(ptr BinaryPointer) { C.free(unsafe.Pointer(ptr)) })
+}
+
+// Style returns the response style for the request, so always BinaryPrompt.
+func (b *BinaryConvRequest) Style() Style {
+	return BinaryPrompt
+}
+
+// Pointer returns the conversation style of the StringConvRequest.
+func (b *BinaryConvRequest) Pointer() BinaryPointer {
+	ptr := b.ptr.Load()
+	return *(*BinaryPointer)(unsafe.Pointer(&ptr))
+}
+
+// CreateResponse creates a new BinaryConvResponse from the request
+func (b *BinaryConvRequest) CreateResponse(ptr BinaryPointer) BinaryConvResponse {
+	bcr := &binaryConvResponse{ptr, b.responseFinalizer, &sync.Mutex{}}
+	runtime.SetFinalizer(bcr, func(bcr *binaryConvResponse) {
+		bcr.Release()
+	})
+	return bcr
+}
+
+// Release releases the resources allocated by the request
+func (b *BinaryConvRequest) Release() {
+	ptr := b.ptr.Swap(0)
+	if b.finalizer != nil {
+		b.finalizer(*(*BinaryPointer)(unsafe.Pointer(&ptr)))
+		runtime.SetFinalizer(b, nil)
+	}
+}
+
+// BinaryDecoder is a function type for decode the a binary pointer data into
+// bytes
+type BinaryDecoder func(BinaryPointer) ([]byte, error)
+
+// BinaryConvResponse is a subtype of ConvResponse used for binary
+// conversation responses.
+type BinaryConvResponse interface {
+	ConvResponse
+	Data() BinaryPointer
+	Decode(BinaryDecoder) ([]byte, error)
+	Release()
+}
+
+type binaryConvResponse struct {
+	ptr       BinaryPointer
+	finalizer BinaryFinalizer
+	mutex     *sync.Mutex
+}
+
+// Style returns the response style for the response, so always BinaryPrompt.
+func (b binaryConvResponse) Style() Style {
+	return BinaryPrompt
+}
+
+// Data returns the response native pointer, it's up to the protocol to parse
+// it accordingly.
+func (b *binaryConvResponse) Data() BinaryPointer {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.ptr
+}
+
+// Decode decodes the binary data using the provided decoder function.
+func (b *binaryConvResponse) Decode(decoder BinaryDecoder) (
+	[]byte, error) {
+	if decoder == nil {
+		return nil, errors.New("nil decoder provided")
+	}
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return decoder(b.ptr)
+}
+
+// Release releases the binary conversation response data.
+// This is also automatically via a finalizer, but applications may control
+// this explicitly deferring execution of this.
+func (b *binaryConvResponse) Release() {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	ptr := b.ptr
+	b.ptr = nil
+	if b.finalizer != nil {
+		b.finalizer(ptr)
+	} else {
+		C.free(unsafe.Pointer(ptr))
+	}
+}
+
 // StartStringConv starts a text-based conversation using the provided style
 // and prompt.
 func (m *moduleTransaction) StartStringConv(style Style, prompt string) (
@@ -289,6 +431,29 @@ func (m *moduleTransaction) startStringConvImpl(iface moduleTransactionIface,
 func (m *moduleTransaction) StartStringConvf(style Style, format string, args ...interface{}) (
 	StringConvResponse, error) {
 	return m.StartStringConv(style, fmt.Sprintf(format, args...))
+}
+
+// HasBinaryProtocol checks if binary protocol is supported.
+func (m *moduleTransaction) hasBinaryProtocol() bool {
+	return CheckPamHasBinaryProtocol()
+}
+
+// StartBinaryConv starts a binary conversation using the provided bytes.
+func (m *moduleTransaction) StartBinaryConv(bytes []byte) (
+	BinaryConvResponse, error) {
+	return m.startBinaryConvImpl(m, bytes)
+}
+
+func (m *moduleTransaction) startBinaryConvImpl(iface moduleTransactionIface,
+	bytes []byte) (
+	BinaryConvResponse, error) {
+	res, err := m.startConvImpl(iface, NewBinaryConvRequestFromBytes(bytes))
+	if err != nil {
+		return nil, err
+	}
+
+	binaryRes, _ := res.(BinaryConvResponse)
+	return binaryRes, nil
 }
 
 // StartConv initiates a PAM conversation using the provided ConvRequest.
@@ -360,14 +525,21 @@ func (m *moduleTransaction) startConvMultiImpl(iface moduleTransactionIface,
 		case StringConvRequest:
 			cBytes = unsafe.Pointer(C.CString(r.Prompt()))
 			defer C.free(cBytes)
+		case BinaryConvRequester:
+			if !iface.hasBinaryProtocol() {
+				return nil, errors.New("%w: binary protocol is not supported")
+			}
+			cBytes = unsafe.Pointer(r.Pointer())
 		default:
 			return nil, fmt.Errorf("unsupported conversation type %#v", r)
 		}
 
-		goMsgs[i] = &C.struct_pam_message{
-			msg_style: C.int(req.Style()),
-			msg:       (*C.char)(cBytes),
-		}
+		cMessage := (*C.struct_pam_message)(C.calloc(1,
+			(C.size_t)(unsafe.Sizeof(*goMsgs[i]))))
+		defer C.free(unsafe.Pointer(cMessage))
+		cMessage.msg_style = C.int(req.Style())
+		cMessage.msg = (*C.char)(cBytes)
+		goMsgs[i] = cMessage
 	}
 
 	var cResponses *C.struct_pam_response
@@ -378,15 +550,26 @@ func (m *moduleTransaction) startConvMultiImpl(iface moduleTransactionIface,
 
 	goResponses := unsafe.Slice(cResponses, len(requests))
 	defer func() {
-		for _, resp := range goResponses {
-			C.free(unsafe.Pointer(resp.resp))
+		for i, resp := range goResponses {
+			if resp.resp == nil {
+				continue
+			}
+			switch req := requests[i].(type) {
+			case BinaryConvRequester:
+				// In the binary prompt case, we need to rely on the provided
+				// finalizer to release the response, so let's create a new one.
+				req.CreateResponse(BinaryPointer(resp.resp)).Release()
+			default:
+				C.free(unsafe.Pointer(resp.resp))
+			}
 		}
 		C.free(unsafe.Pointer(cResponses))
 	}()
 
 	responses = make([]ConvResponse, 0, len(requests))
 	for i, resp := range goResponses {
-		msgStyle := requests[i].Style()
+		request := requests[i]
+		msgStyle := request.Style()
 		switch msgStyle {
 		case PromptEchoOff:
 			fallthrough
@@ -399,6 +582,13 @@ func (m *moduleTransaction) startConvMultiImpl(iface moduleTransactionIface,
 				style:    msgStyle,
 				response: C.GoString(resp.resp),
 			})
+		case BinaryPrompt:
+			// Let's steal the resp ownership here, so that the request
+			// finalizer won't act on it.
+			bcr, _ := request.(BinaryConvRequester)
+			resp := bcr.CreateResponse(BinaryPointer(resp.resp))
+			goResponses[i].resp = nil
+			responses = append(responses, resp)
 		default:
 			return nil,
 				fmt.Errorf("unsupported conversation type %v", msgStyle)

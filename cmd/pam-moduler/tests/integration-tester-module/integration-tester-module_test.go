@@ -71,6 +71,21 @@ func ensureEnv(tx *pam.Transaction, variable string, expected string) error {
 	return nil
 }
 
+func (r *Request) toBytes(t *testing.T) []byte {
+	t.Helper()
+	bytes, err := r.GOB()
+	if err != nil {
+		t.Fatalf("error: %v", err)
+		return nil
+	}
+	return bytes
+}
+
+func (r *Request) toTransactionData(t *testing.T) []byte {
+	t.Helper()
+	return utils.TestBinaryDataEncoder(r.toBytes(t))
+}
+
 func Test_Moduler_IntegrationTesterModule(t *testing.T) {
 	t.Parallel()
 	if !pam.CheckPamHasStartConfdir() {
@@ -818,6 +833,104 @@ func Test_Moduler_IntegrationTesterModule(t *testing.T) {
 				},
 			},
 		},
+		"start-conv-binary": {
+			credentials: utils.NewBinaryTransactionWithData([]byte(
+				"\x00This is a binary data request\xC5\x00\xffYes it is!"),
+				[]byte{0x01, 0x02, 0x03, 0x05, 0x00, 0x99}),
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableBinaryConvRequest{
+						utils.TestBinaryDataEncoder(
+							[]byte("\x00This is a binary data request\xC5\x00\xffYes it is!")),
+					}),
+					exp: []interface{}{SerializableBinaryConvResponse{
+						[]byte{0x01, 0x02, 0x03, 0x05, 0x00, 0x99},
+					}, nil},
+				},
+				{
+					r: NewRequest("StartBinaryConv",
+						utils.TestBinaryDataEncoder(
+							[]byte("\x00This is a binary data request\xC5\x00\xffYes it is!"))),
+					exp: []interface{}{SerializableBinaryConvResponse{
+						[]byte{0x01, 0x02, 0x03, 0x05, 0x00, 0x99},
+					}, nil},
+				},
+			},
+		},
+		"start-conv-binary-handle-failure-passed-data-mismatch": {
+			expectedError: pam.ErrConv,
+			credentials: utils.NewBinaryTransactionWithData([]byte(
+				"\x00This is a binary data request\xC5\x00\xffYes it is!"),
+				[]byte{0x01, 0x02, 0x03, 0x05, 0x00, 0x99}),
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableBinaryConvRequest{
+						(&Request{"Not the expected binary data", nil}).toTransactionData(t),
+					}),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+				{
+					r: NewRequest("StartBinaryConv",
+						(&Request{"Not the expected binary data", nil}).toTransactionData(t)),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+			},
+		},
+		"start-conv-binary-handle-failure-returned-data-mismatch": {
+			expectedError: pam.ErrConv,
+			credentials: utils.NewBinaryTransactionWithRandomData(100,
+				[]byte{0x01, 0x02, 0x03, 0x05, 0x00, 0x99}),
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableBinaryConvRequest{
+						(&Request{"Wrong binary data", nil}).toTransactionData(t),
+					}),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+				{
+					r: NewRequest("StartBinaryConv",
+						(&Request{"Wrong binary data", nil}).toTransactionData(t)),
+					exp: []interface{}{nil, pam.ErrConv},
+				},
+			},
+		},
+		"start-conv-binary-in-nil": {
+			credentials: utils.NewBinaryTransactionWithData(nil,
+				(&Request{"Binary data", []interface{}{true, 123, 0.5, "yay!"}}).toBytes(t)),
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableBinaryConvRequest{}),
+					exp: []interface{}{SerializableBinaryConvResponse{
+						(&Request{"Binary data", []interface{}{true, 123, 0.5, "yay!"}}).toBytes(t),
+					}, nil},
+				},
+				{
+					r: NewRequest("StartBinaryConv", nil),
+					exp: []interface{}{SerializableBinaryConvResponse{
+						(&Request{"Binary data", []interface{}{true, 123, 0.5, "yay!"}}).toBytes(t),
+					}, nil},
+				},
+			},
+		},
+		"start-conv-binary-out-nil": {
+			credentials: utils.NewBinaryTransactionWithData([]byte(
+				"\x00This is a binary data request\xC5\x00\xffGimme nil!"), nil),
+			checkedRequests: []checkedRequest{
+				{
+					r: NewRequest("StartConv", SerializableBinaryConvRequest{
+						utils.TestBinaryDataEncoder(
+							[]byte("\x00This is a binary data request\xC5\x00\xffGimme nil!")),
+					}),
+					exp: []interface{}{SerializableBinaryConvResponse{}, nil},
+				},
+				{
+					r: NewRequest("StartBinaryConv",
+						utils.TestBinaryDataEncoder(
+							[]byte("\x00This is a binary data request\xC5\x00\xffGimme nil!"))),
+					exp: []interface{}{SerializableBinaryConvResponse{}, nil},
+				},
+			},
+		},
 	}
 
 	for name, tc := range tests {
@@ -830,6 +943,13 @@ func Test_Moduler_IntegrationTesterModule(t *testing.T) {
 				{Action: utils.Auth, Control: utils.Requisite, Module: modulePath,
 					Args: []string{socketPath}},
 			})
+
+			switch tc.credentials.(type) {
+			case pam.BinaryConversationHandler:
+				if !pam.CheckPamHasBinaryProtocol() {
+					t.Skip("Binary protocol is not supported")
+				}
+			}
 
 			tx, err := pam.StartConfDir(name, tc.user, tc.credentials, ts.WorkDir())
 			if err != nil {
@@ -1082,6 +1202,15 @@ func Test_Moduler_IntegrationTesterModule_Authenticate(t *testing.T) {
 			expectedError: pam.ErrSystem,
 			checkedRequests: []checkedRequest{{
 				r:   NewRequest("StartStringConv", pam.TextInfo, "hello PAM!"),
+				exp: []interface{}{nil, pam.ErrSystem},
+			}},
+		},
+		"StartConv-Binary": {
+			expectedError: pam.ErrSystem,
+			checkedRequests: []checkedRequest{{
+				r: NewRequest("StartConv", SerializableBinaryConvRequest{
+					[]byte{0x01, 0x02, 0x03, 0x05, 0x00, 0x99},
+				}),
 				exp: []interface{}{nil, pam.ErrSystem},
 			}},
 		},

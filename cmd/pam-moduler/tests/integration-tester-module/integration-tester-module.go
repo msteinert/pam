@@ -60,6 +60,9 @@ func (m *integrationTesterModule) handleRequest(authReq *authRequest, r *Request
 		case SerializableStringConvRequest:
 			args = append(args, reflect.ValueOf(
 				pam.NewStringConvRequest(v.Style, v.Request)))
+		case SerializableBinaryConvRequest:
+			args = append(args, reflect.ValueOf(
+				pam.NewBinaryConvRequestFromBytes(v.Request)))
 		default:
 			if arg == nil {
 				args = append(args, reflect.Zero(method.Type().In(i)))
@@ -76,6 +79,12 @@ func (m *integrationTesterModule) handleRequest(authReq *authRequest, r *Request
 		case pam.StringConvResponse:
 			res.ActionArgs = append(res.ActionArgs,
 				SerializableStringConvResponse{value.Style(), value.Response()})
+		case pam.BinaryConvResponse:
+			data, err := value.Decode(utils.TestBinaryDataDecoder)
+			if err != nil {
+				return nil, err
+			}
+			res.ActionArgs = append(res.ActionArgs, SerializableBinaryConvResponse{data})
 		case pam.Error:
 			authReq.lastError = value
 			res.ActionArgs = append(res.ActionArgs, value)

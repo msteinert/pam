@@ -15,6 +15,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime"
 	"runtime/cgo"
 	"testing"
@@ -40,10 +41,12 @@ type mockModuleTransaction struct {
 	ConversationHandler ConversationHandler
 	moduleData          map[string]uintptr
 	allocatedData       []unsafe.Pointer
+	binaryProtocol      bool
 }
 
 func newMockModuleTransaction(m *mockModuleTransaction) *mockModuleTransaction {
 	m.moduleData = make(map[string]uintptr)
+	m.binaryProtocol = true
 	runtime.SetFinalizer(m, func(m *mockModuleTransaction) {
 		for _, ptr := range m.allocatedData {
 			C.free(ptr)
@@ -126,14 +129,21 @@ func (m *mockModuleTransaction) getConv() (*C.struct_pam_conv, error) {
 	return nil, nil
 }
 
+func (m *mockModuleTransaction) hasBinaryProtocol() bool {
+	return m.binaryProtocol
+}
+
 type mockConversationHandler struct {
 	User                    string
 	PromptEchoOn            string
 	PromptEchoOff           string
 	TextInfo                string
 	ErrorMsg                string
+	Binary                  []byte
 	ExpectedMessage         string
 	ExpectedMessagesByStyle map[Style]string
+	ExpectedNil             bool
+	ExpectedBinary          []byte
 	CheckEmptyMessage       bool
 	ExpectedStyle           Style
 	CheckZeroStyle          bool
@@ -177,4 +187,47 @@ func (c mockConversationHandler) RespondPAM(s Style, msg string) (string, error)
 	}
 
 	return "", fmt.Errorf("%w: unhandled style: %v", ErrConv, s)
+}
+
+func testBinaryDataEncoder(bytes []byte) []byte {
+	if len(bytes) > 0xff {
+		panic("Binary transaction size not supported")
+	}
+
+	if bytes == nil {
+		return bytes
+	}
+
+	data := make([]byte, 0, len(bytes)+1)
+	data = append(data, byte(len(bytes)))
+	data = append(data, bytes...)
+	return data
+}
+
+func testBinaryDataDecoder(ptr BinaryPointer) ([]byte, error) {
+	if ptr == nil {
+		return nil, nil
+	}
+
+	length := uint8(*((*C.uint8_t)(ptr)))
+	if length == 0 {
+		return []byte{}, nil
+	}
+	return C.GoBytes(unsafe.Pointer(ptr), C.int(length+1))[1:], nil
+}
+
+func (c mockConversationHandler) RespondPAMBinary(ptr BinaryPointer) ([]byte, error) {
+	if ptr == nil && !c.ExpectedNil {
+		return nil, fmt.Errorf("%w: unexpected null binary data", ErrConv)
+	} else if ptr == nil {
+		return testBinaryDataEncoder(c.Binary), nil
+	}
+
+	bytes, _ := testBinaryDataDecoder(ptr)
+	if !reflect.DeepEqual(bytes, c.ExpectedBinary) {
+		return nil, fmt.Errorf("%w: data mismatch %#v vs %#v",
+			ErrConv, bytes, c.ExpectedBinary)
+	}
+
+	return testBinaryDataEncoder(c.Binary), nil
 }

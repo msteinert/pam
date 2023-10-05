@@ -42,7 +42,10 @@ static inline int cb_pam_conv(int num_msg, PAM_CONST struct pam_message **msg, s
 error:
 	for (size_t i = 0; i < num_msg; ++i) {
 		if ((*resp)[i].resp) {
-			memset((*resp)[i].resp, 0, strlen((*resp)[i].resp));
+#ifdef PAM_BINARY_PROMPT
+			if (msg[i]->msg_style != PAM_BINARY_PROMPT)
+#endif
+				memset((*resp)[i].resp, 0, strlen((*resp)[i].resp));
 			free((*resp)[i].resp);
 		}
 	}
