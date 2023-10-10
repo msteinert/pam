@@ -42,16 +42,16 @@ const (
 	PromptEchoOff Style = C.PAM_PROMPT_ECHO_OFF
 	// PromptEchoOn indicates the conversation handler should obtain a
 	// string while echoing text.
-	PromptEchoOn = C.PAM_PROMPT_ECHO_ON
+	PromptEchoOn Style = C.PAM_PROMPT_ECHO_ON
 	// ErrorMsg indicates the conversation handler should display an
 	// error message.
-	ErrorMsg = C.PAM_ERROR_MSG
+	ErrorMsg Style = C.PAM_ERROR_MSG
 	// TextInfo indicates the conversation handler should display some
 	// text.
-	TextInfo = C.PAM_TEXT_INFO
+	TextInfo Style = C.PAM_TEXT_INFO
 	// BinaryPrompt indicates the conversation handler that should implement
 	// the private binary protocol
-	BinaryPrompt = C.PAM_BINARY_PROMPT
+	BinaryPrompt Style = C.PAM_BINARY_PROMPT
 )
 
 // ConversationHandler is an interface for objects that can be used as
@@ -244,19 +244,19 @@ const (
 	// Service is the name which identifies the PAM stack.
 	Service Item = C.PAM_SERVICE
 	// User identifies the username identity used by a service.
-	User = C.PAM_USER
+	User Item = C.PAM_USER
 	// Tty is the terminal name.
-	Tty = C.PAM_TTY
+	Tty Item = C.PAM_TTY
 	// Rhost is the requesting host name.
-	Rhost = C.PAM_RHOST
+	Rhost Item = C.PAM_RHOST
 	// Authtok is the currently active authentication token.
-	Authtok = C.PAM_AUTHTOK
+	Authtok Item = C.PAM_AUTHTOK
 	// Oldauthtok is the old authentication token.
-	Oldauthtok = C.PAM_OLDAUTHTOK
+	Oldauthtok Item = C.PAM_OLDAUTHTOK
 	// Ruser is the requesting user name.
-	Ruser = C.PAM_RUSER
+	Ruser Item = C.PAM_RUSER
 	// UserPrompt is the string use to prompt for a username.
-	UserPrompt = C.PAM_USER_PROMPT
+	UserPrompt Item = C.PAM_USER_PROMPT
 )
 
 // SetItem sets a PAM information item.
@@ -287,21 +287,21 @@ const (
 	Silent Flags = C.PAM_SILENT
 	// DisallowNullAuthtok indicates that authorization should fail
 	// if the user does not have a registered authentication token.
-	DisallowNullAuthtok = C.PAM_DISALLOW_NULL_AUTHTOK
+	DisallowNullAuthtok Flags = C.PAM_DISALLOW_NULL_AUTHTOK
 	// EstablishCred indicates that credentials should be established
 	// for the user.
-	EstablishCred = C.PAM_ESTABLISH_CRED
+	EstablishCred Flags = C.PAM_ESTABLISH_CRED
 	// DeleteCred inidicates that credentials should be deleted.
-	DeleteCred = C.PAM_DELETE_CRED
+	DeleteCred Flags = C.PAM_DELETE_CRED
 	// ReinitializeCred indicates that credentials should be fully
 	// reinitialized.
-	ReinitializeCred = C.PAM_REINITIALIZE_CRED
+	ReinitializeCred Flags = C.PAM_REINITIALIZE_CRED
 	// RefreshCred indicates that the lifetime of existing credentials
 	// should be extended.
-	RefreshCred = C.PAM_REFRESH_CRED
+	RefreshCred Flags = C.PAM_REFRESH_CRED
 	// ChangeExpiredAuthtok indicates that the authentication token
 	// should be changed if it has expired.
-	ChangeExpiredAuthtok = C.PAM_CHANGE_EXPIRED_AUTHTOK
+	ChangeExpiredAuthtok Flags = C.PAM_CHANGE_EXPIRED_AUTHTOK
 )
 
 // Authenticate is used to authenticate the user.
