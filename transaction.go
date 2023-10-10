@@ -105,6 +105,9 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 			if err != nil {
 				return nil, C.int(ErrConv)
 			}
+			if bytes == nil {
+				return nil, success
+			}
 			return (*C.char)(C.CBytes(bytes)), success
 		}
 		handler = cb
