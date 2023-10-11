@@ -23,7 +23,6 @@ import "C"
 
 import (
 	"fmt"
-	"runtime"
 	"runtime/cgo"
 	"strings"
 	"sync/atomic"
@@ -133,11 +132,17 @@ type Transaction struct {
 	c          cgo.Handle
 }
 
-// transactionFinalizer cleans up the PAM handle and deletes the callback
-// function.
-func transactionFinalizer(t *Transaction) {
-	C.pam_end(t.handle, C.int(t.lastStatus.Load()))
-	t.c.Delete()
+// End cleans up the PAM handle and deletes the callback function.
+// It must be called when done with the transaction.
+func (t *Transaction) End() error {
+	handle := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&t.handle)), nil)
+	if handle == nil {
+		return nil
+	}
+
+	defer t.c.Delete()
+	return t.handlePamStatus(C.pam_end((*C.pam_handle_t)(handle),
+		C.int(t.lastStatus.Load())))
 }
 
 // Allows to call pam functions managing return status
@@ -154,11 +159,19 @@ func (t *Transaction) handlePamStatus(cStatus C.int) error {
 //
 // All application calls to PAM begin with Start*. The returned
 // transaction provides an interface to the remainder of the API.
+//
+// It's responsibility of the Transaction owner to release all the resources
+// allocated underneath by PAM by calling End() once done.
+//
+// It's not advised to End the transaction using a runtime.SetFinalizer unless
+// you're absolutely sure that your stack is multi-thread friendly (normally it
+// is not!) and using a LockOSThread/UnlockOSThread pair.
 func Start(service, user string, handler ConversationHandler) (*Transaction, error) {
 	return start(service, user, handler, "")
 }
 
-// StartFunc registers the handler func as a conversation handler.
+// StartFunc registers the handler func as a conversation handler and starts
+// the transaction (see Start() documentation).
 func StartFunc(service, user string, handler func(Style, string) (string, error)) (*Transaction, error) {
 	return Start(service, user, ConversationFunc(handler))
 }
@@ -170,6 +183,13 @@ func StartFunc(service, user string, handler func(Style, string) (string, error)
 //
 // All application calls to PAM begin with Start*. The returned
 // transaction provides an interface to the remainder of the API.
+//
+// It's responsibility of the Transaction owner to release all the resources
+// allocated underneath by PAM by calling End() once done.
+//
+// It's not advised to End the transaction using a runtime.SetFinalizer unless
+// you're absolutely sure that your stack is multi-thread friendly (normally it
+// is not!) and using a LockOSThread/UnlockOSThread pair.
 func StartConfDir(service, user string, handler ConversationHandler, confDir string) (*Transaction, error) {
 	if !CheckPamHasStartConfdir() {
 		return nil, fmt.Errorf(
@@ -193,7 +213,6 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 		c:    cgo.NewHandle(handler),
 	}
 	C.init_pam_conv(t.conv, C.uintptr_t(t.c))
-	runtime.SetFinalizer(t, transactionFinalizer)
 	s := C.CString(service)
 	defer C.free(unsafe.Pointer(s))
 	var u *C.char
@@ -210,6 +229,7 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 		err = t.handlePamStatus(C.pam_start_confdir(s, u, t.conv, c, &t.handle))
 	}
 	if err != nil {
+		var _ = t.End()
 		return nil, err
 	}
 	return t, nil
