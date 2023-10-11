@@ -22,6 +22,7 @@ package pam
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"runtime/cgo"
@@ -141,6 +142,15 @@ func transactionFinalizer(t *Transaction) {
 	t.c.Delete()
 }
 
+// Allows to call pam functions managing return status
+func (t *Transaction) handlePamStatus(cStatus C.int) error {
+	t.status = cStatus
+	if cStatus != success {
+		return t
+	}
+	return nil
+}
+
 // Start initiates a new PAM transaction. Service is treated identically to
 // how pam_start treats it internally.
 //
@@ -193,15 +203,16 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 		u = C.CString(user)
 		defer C.free(unsafe.Pointer(u))
 	}
+	var err error
 	if confDir == "" {
-		t.status = C.pam_start(s, u, t.conv, &t.handle)
+		err = t.handlePamStatus(C.pam_start(s, u, t.conv, &t.handle))
 	} else {
 		c := C.CString(confDir)
 		defer C.free(unsafe.Pointer(c))
-		t.status = C.pam_start_confdir(s, u, t.conv, c, &t.handle)
+		err = t.handlePamStatus(C.pam_start_confdir(s, u, t.conv, c, &t.handle))
 	}
-	if t.status != success {
-		return nil, Error(t.status)
+	if err != nil {
+		return nil, errors.Join(Error(t.status), err)
 	}
 	return t, nil
 }
@@ -237,19 +248,15 @@ const (
 func (t *Transaction) SetItem(i Item, item string) error {
 	cs := unsafe.Pointer(C.CString(item))
 	defer C.free(cs)
-	t.status = C.pam_set_item(t.handle, C.int(i), cs)
-	if t.status != success {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_set_item(t.handle, C.int(i), cs))
 }
 
 // GetItem retrieves a PAM information item.
 func (t *Transaction) GetItem(i Item) (string, error) {
 	var s unsafe.Pointer
-	t.status = C.pam_get_item(t.handle, C.int(i), &s)
-	if t.status != success {
-		return "", t
+	err := t.handlePamStatus(C.pam_get_item(t.handle, C.int(i), &s))
+	if err != nil {
+		return "", err
 	}
 	return C.GoString((*C.char)(s)), nil
 }
@@ -286,11 +293,7 @@ const (
 //
 // Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) Authenticate(f Flags) error {
-	t.status = C.pam_authenticate(t.handle, C.int(f))
-	if t.status != success {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_authenticate(t.handle, C.int(f)))
 }
 
 // SetCred is used to establish, maintain and delete the credentials of a
@@ -298,55 +301,35 @@ func (t *Transaction) Authenticate(f Flags) error {
 //
 // Valid flags: EstablishCred, DeleteCred, ReinitializeCred, RefreshCred
 func (t *Transaction) SetCred(f Flags) error {
-	t.status = C.pam_setcred(t.handle, C.int(f))
-	if t.status != success {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_setcred(t.handle, C.int(f)))
 }
 
 // AcctMgmt is used to determine if the user's account is valid.
 //
 // Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) AcctMgmt(f Flags) error {
-	t.status = C.pam_acct_mgmt(t.handle, C.int(f))
-	if t.status != success {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_acct_mgmt(t.handle, C.int(f)))
 }
 
 // ChangeAuthTok is used to change the authentication token.
 //
 // Valid flags: Silent, ChangeExpiredAuthtok
 func (t *Transaction) ChangeAuthTok(f Flags) error {
-	t.status = C.pam_chauthtok(t.handle, C.int(f))
-	if t.status != success {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_chauthtok(t.handle, C.int(f)))
 }
 
 // OpenSession sets up a user session for an authenticated user.
 //
 // Valid flags: Slient
 func (t *Transaction) OpenSession(f Flags) error {
-	t.status = C.pam_open_session(t.handle, C.int(f))
-	if t.status != success {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_open_session(t.handle, C.int(f)))
 }
 
 // CloseSession closes a previously opened session.
 //
 // Valid flags: Silent
 func (t *Transaction) CloseSession(f Flags) error {
-	t.status = C.pam_close_session(t.handle, C.int(f))
-	if t.status != success {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_close_session(t.handle, C.int(f)))
 }
 
 // PutEnv adds or changes the value of PAM environment variables.
@@ -357,11 +340,7 @@ func (t *Transaction) CloseSession(f Flags) error {
 func (t *Transaction) PutEnv(nameval string) error {
 	cs := C.CString(nameval)
 	defer C.free(unsafe.Pointer(cs))
-	t.status = C.pam_putenv(t.handle, cs)
-	if t.status != success {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_putenv(t.handle, cs))
 }
 
 // GetEnv is used to retrieve a PAM environment variable.
@@ -384,8 +363,7 @@ func (t *Transaction) GetEnvList() (map[string]string, error) {
 	env := make(map[string]string)
 	p := C.pam_getenvlist(t.handle)
 	if p == nil {
-		t.status = C.int(ErrBuf)
-		return nil, t
+		return nil, t.handlePamStatus(C.int(ErrBuf))
 	}
 	for q := p; *q != nil; q = next(q) {
 		chunks := strings.SplitN(C.GoString(*q), "=", 2)
