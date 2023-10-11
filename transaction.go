@@ -173,7 +173,7 @@ func Start(service, user string, handler ConversationHandler) (*Transaction, err
 // StartFunc registers the handler func as a conversation handler and starts
 // the transaction (see Start() documentation).
 func StartFunc(service, user string, handler func(Style, string) (string, error)) (*Transaction, error) {
-	return Start(service, user, ConversationFunc(handler))
+	return start(service, user, ConversationFunc(handler), "")
 }
 
 // StartConfDir initiates a new PAM transaction. Service is treated identically to
@@ -212,6 +212,7 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 		conv: &C.struct_pam_conv{},
 		c:    cgo.NewHandle(handler),
 	}
+
 	C.init_pam_conv(t.conv, C.uintptr_t(t.c))
 	s := C.CString(service)
 	defer C.free(unsafe.Pointer(s))

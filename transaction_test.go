@@ -6,7 +6,11 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
+	"sync/atomic"
 	"testing"
+	"time"
+	"unsafe"
 )
 
 func maybeEndTransaction(t *testing.T, tx *Transaction) {
@@ -21,6 +25,19 @@ func maybeEndTransaction(t *testing.T, tx *Transaction) {
 	}
 }
 
+func ensureTransactionEnds(t *testing.T, tx *Transaction) {
+	t.Helper()
+
+	runtime.SetFinalizer(tx, func(tx *Transaction) {
+		// #nosec:G103 - the pointer conversion is checked.
+		handle := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&tx.handle)))
+		if handle == nil {
+			return
+		}
+		t.Fatalf("transaction has not been finalized")
+	})
+}
+
 func TestPAM_001(t *testing.T) {
 	u, _ := user.Current()
 	if u.Uid != "0" {
@@ -30,6 +47,7 @@ func TestPAM_001(t *testing.T) {
 	tx, err := StartFunc("", "test", func(s Style, msg string) (string, error) {
 		return p, nil
 	})
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -62,6 +80,7 @@ func TestPAM_002(t *testing.T) {
 		}
 		return "", errors.New("unexpected")
 	})
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -97,6 +116,7 @@ func TestPAM_003(t *testing.T) {
 		Password: "secret",
 	}
 	tx, err := Start("", "", c)
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -116,6 +136,7 @@ func TestPAM_004(t *testing.T) {
 		Password: "secret",
 	}
 	tx, err := Start("", "test", c)
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -134,6 +155,7 @@ func TestPAM_005(t *testing.T) {
 	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
 		return "secret", nil
 	})
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -152,6 +174,7 @@ func TestPAM_006(t *testing.T) {
 	tx, err := StartFunc("passwd", u.Username, func(s Style, msg string) (string, error) {
 		return "secret", nil
 	})
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -174,6 +197,7 @@ func TestPAM_007(t *testing.T) {
 	tx, err := StartFunc("", "test", func(s Style, msg string) (string, error) {
 		return "", errors.New("Sorry, it didn't work")
 	})
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -256,6 +280,7 @@ func TestPAM_ConfDir_InfoMessage(t *testing.T) {
 			}
 			return "", errors.New("unexpected")
 		}), "test-services")
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -272,6 +297,7 @@ func TestPAM_ConfDir_InfoMessage(t *testing.T) {
 func TestPAM_ConfDir_Deny(t *testing.T) {
 	u, _ := user.Current()
 	tx, err := StartConfDir("deny-service", u.Username, Credentials{}, "test-services")
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -296,6 +322,7 @@ func TestPAM_ConfDir_PromptForUserName(t *testing.T) {
 		Password: "wrongsecret",
 	}
 	tx, err := StartConfDir("succeed-if-user-test", "", c, "test-services")
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if !CheckPamHasStartConfdir() {
 		if err == nil {
@@ -319,6 +346,7 @@ func TestPAM_ConfDir_WrongUserName(t *testing.T) {
 		Password: "wrongsecret",
 	}
 	tx, err := StartConfDir("succeed-if-user-test", "", c, "test-services")
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if !CheckPamHasStartConfdir() {
 		if err == nil {
@@ -344,6 +372,7 @@ func TestItem(t *testing.T) {
 	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
 		return "", nil
 	})
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -382,6 +411,7 @@ func TestEnv(t *testing.T) {
 	tx, err := StartFunc("", "", func(s Style, msg string) (string, error) {
 		return "", nil
 	})
+	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -525,6 +555,7 @@ func Test_Error(t *testing.T) {
 				}
 
 				tx, err := StartConfDir(serviceName, "user", c, servicePath)
+				ensureTransactionEnds(t, tx)
 				defer maybeEndTransaction(t, tx)
 				if err != nil {
 					t.Fatalf("start #error: %v", err)
@@ -556,6 +587,25 @@ func Test_Error(t *testing.T) {
 			})
 		}
 	}
+}
+
+func Test_Finalizer(t *testing.T) {
+	if !CheckPamHasStartConfdir() {
+		t.Skip("this requires PAM with Conf dir support")
+	}
+
+	func() {
+		tx, err := StartConfDir("permit-service", "", nil, "test-services")
+		ensureTransactionEnds(t, tx)
+		defer maybeEndTransaction(t, tx)
+		if err != nil {
+			t.Fatalf("start #error: %v", err)
+		}
+	}()
+
+	runtime.GC()
+	// sleep to switch to finalizer goroutine
+	time.Sleep(5 * time.Millisecond)
 }
 
 func TestFailure_001(t *testing.T) {
