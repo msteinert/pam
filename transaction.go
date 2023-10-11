@@ -126,8 +126,6 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 }
 
 // Transaction is the application's handle for a PAM transaction.
-//
-//nolint:errname
 type Transaction struct {
 	handle     *C.pam_handle_t
 	conv       *C.struct_pam_conv
@@ -215,10 +213,6 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 		return nil, err
 	}
 	return t, nil
-}
-
-func (t *Transaction) Error() string {
-	return Error(t.lastStatus.Load()).Error()
 }
 
 // Item is a an PAM information type.

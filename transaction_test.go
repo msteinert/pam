@@ -512,7 +512,7 @@ func Test_Error(t *testing.T) {
 				if err != nil {
 					var status Error
 					if !errors.As(err, &status) || err.Error() != status.Error() {
-						t.Fatalf("error #unexpected status %v vs %v", err.Error(),
+						t.Fatalf("error #unexpected status %#v vs %#v", err.Error(),
 							status.Error())
 					}
 				}
