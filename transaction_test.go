@@ -167,8 +167,8 @@ func TestPAM_007(t *testing.T) {
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
 	}
-	if tx.Error() != ErrAuth.Error() {
-		t.Fatalf("error #unexpected status %v", tx.Error())
+	if !errors.Is(err, ErrAuth) {
+		t.Fatalf("error #unexpected error %v", err)
 	}
 }
 
@@ -255,8 +255,8 @@ func TestPAM_ConfDir_Deny(t *testing.T) {
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
 	}
-	if tx.Error() != ErrAuth.Error() {
-		t.Fatalf("error #unexpected status %v", tx.Error())
+	if !errors.Is(err, ErrAuth) {
+		t.Fatalf("error #unexpected error %v", err)
 	}
 }
 
@@ -304,8 +304,8 @@ func TestPAM_ConfDir_WrongUserName(t *testing.T) {
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
 	}
-	if tx.Error() != ErrAuth.Error() {
-		t.Fatalf("error #unexpected status %v", tx.Error())
+	if !errors.Is(err, ErrAuth) {
+		t.Fatalf("error #unexpected error %v", err)
 	}
 }
 
@@ -416,7 +416,7 @@ func Test_Error(t *testing.T) {
 	}
 
 	statuses := map[string]error{
-		"success":               Error(success),
+		"success":               nil,
 		"open_err":              ErrOpen,
 		"symbol_err":            ErrSymbol,
 		"service_err":           ErrService,
@@ -441,7 +441,7 @@ func Test_Error(t *testing.T) {
 		"authtok_lock_busy":     ErrAuthtokLockBusy,
 		"authtok_disable_aging": ErrAuthtokDisableAging,
 		"try_again":             ErrTryAgain,
-		"ignore":                Error(success), /* Ignore can't be returned */
+		"ignore":                nil, /* Ignore can't be returned */
 		"abort":                 ErrAbort,
 		"authtok_expired":       ErrAuthtokExpired,
 		"module_unknown":        ErrModuleUnknown,
@@ -504,13 +504,17 @@ func Test_Error(t *testing.T) {
 					err = tx.OpenSession(0)
 				}
 
-				if tx.Error() != expected.Error() {
-					t.Fatalf("error #unexpected status %v", tx.Error())
+				if !errors.Is(err, expected) {
+					t.Fatalf("error #unexpected status %#v vs %#v", err,
+						expected)
 				}
-				if tx.Error() == Error(success).Error() && err != nil {
-					t.Fatalf("error #unexpected: %v", err)
-				} else if tx.Error() != Error(success).Error() && err == nil {
-					t.Fatalf("error #expected an error message")
+
+				if err != nil {
+					var status Error
+					if !errors.As(err, &status) || err.Error() != status.Error() {
+						t.Fatalf("error #unexpected status %v vs %v", err.Error(),
+							status.Error())
+					}
 				}
 			})
 		}
