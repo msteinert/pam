@@ -69,6 +69,7 @@ var (
 	moduleBuildFlags = flag.String("build-flags", "", "comma-separated list of go build flags to use when generating the module")
 	moduleBuildTags  = flag.String("build-tags", "", "comma-separated list of build tags to use when generating the module")
 	noMain           = flag.Bool("no-main", false, "whether to add an empty main to generated file")
+	parallelConv     = flag.Bool("parallel-conv", false, "whether to support performing PAM conversations in parallel")
 )
 
 // Usage is a replacement usage function for the flags package.
@@ -137,6 +138,7 @@ func main() {
 		generateTags: generateTags,
 		noMain:       *noMain,
 		typeName:     *typeName,
+		parallelConv: *parallelConv,
 	}
 
 	// Print the header and package clause.
@@ -169,6 +171,7 @@ type Generator struct {
 	generateTags []string
 	buildFlags   []string
 	noMain       bool
+	parallelConv bool
 }
 
 func (g *Generator) printf(format string, args ...interface{}) {
@@ -184,6 +187,11 @@ func (g *Generator) generate() {
 	var buildTagsArg string
 	if len(g.generateTags) > 0 {
 		buildTagsArg = fmt.Sprintf("-tags %s", strings.Join(g.generateTags, ","))
+	}
+
+	var transactionCreator = "NewModuleTransactionInvoker"
+	if g.parallelConv {
+		transactionCreator = "NewModuleTransactionInvokerParallelConv"
 	}
 
 	// We use a slice since we want to keep order, for reproducible builds.
@@ -257,8 +265,8 @@ func handlePamCall(pamh *C.pam_handle_t, flags C.int, argc C.int,
 		return C.int(pam.ErrIgnore)
 	}
 
-	mt := pam.NewModuleTransactionInvoker(pam.NativeHandle(pamh))
-	err := mt.InvokeHandler(moduleFunc, pam.Flags(flags),
+	mt := pam.%s(pam.NativeHandle(pamh))
+    err := mt.InvokeHandler(moduleFunc, pam.Flags(flags),
 		sliceFromArgv(argc, argv))
 	if err == nil {
 		return 0
@@ -275,7 +283,7 @@ func handlePamCall(pamh *C.pam_handle_t, flags C.int, argc C.int,
 
 	return C.int(pam.ErrSystem)
 }
-`)
+`, transactionCreator)
 
 	for _, f := range vFuncs {
 		g.printf(`

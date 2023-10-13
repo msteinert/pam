@@ -305,10 +305,9 @@ func Test_ModuleTransaction_InvokeHandler(t *testing.T) {
 	}
 }
 
-func Test_MockModuleTransaction(t *testing.T) {
+func testMockModuleTransaction(t *testing.T, mt *moduleTransaction) {
+	t.Helper()
 	t.Parallel()
-
-	mt, _ := NewModuleTransactionInvoker(nil).(*moduleTransaction)
 
 	tests := map[string]struct {
 		testFunc            func(mock *mockModuleTransaction) (any, error)
@@ -913,4 +912,14 @@ func Test_MockModuleTransaction(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_MockModuleTransaction(t *testing.T) {
+	mt, _ := NewModuleTransactionInvoker(nil).(*moduleTransaction)
+	testMockModuleTransaction(t, mt)
+}
+
+func Test_MockModuleTransactionParallelConv(t *testing.T) {
+	mt, _ := NewModuleTransactionInvokerParallelConv(nil).(*moduleTransaction)
+	testMockModuleTransaction(t, mt)
 }

@@ -1,4 +1,4 @@
-//go:generate go run github.com/msteinert/pam/v2/cmd/pam-moduler -type integrationTesterModule
+//go:generate go run github.com/msteinert/pam/v2/cmd/pam-moduler -type integrationTesterModule -parallel-conv
 //go:generate go generate --skip="pam_module.go"
 
 // Package main is the package for the integration tester module PAM shared library.

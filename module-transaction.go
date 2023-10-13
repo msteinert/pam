@@ -43,6 +43,7 @@ type ModuleHandlerFunc func(ModuleTransaction, Flags, []string) error
 // ModuleTransaction is the module-side handle for a PAM transaction.
 type moduleTransaction struct {
 	transactionBase
+	convMutex *sync.Mutex
 }
 
 // ModuleHandler is an interface for objects that can be used to create
@@ -63,10 +64,27 @@ type ModuleTransactionInvoker interface {
 	InvokeHandler(handler ModuleHandlerFunc, flags Flags, args []string) error
 }
 
-// NewModuleTransactionInvoker allows initializing a transaction invoker from
-// the module side.
+// NewModuleTransactionParallelConv allows initializing a transaction from the
+// module side. Conversations using this transaction can be multi-thread, but
+// this requires the application loading the module to support this, otherwise
+// we may just break their assumptions.
+func NewModuleTransactionParallelConv(handle NativeHandle) ModuleTransaction {
+	return &moduleTransaction{transactionBase{handle: handle}, nil}
+}
+
+// NewModuleTransactionInvoker allows initializing a transaction invoker from the
+// module side.
 func NewModuleTransactionInvoker(handle NativeHandle) ModuleTransactionInvoker {
-	return &moduleTransaction{transactionBase{handle: handle}}
+	return &moduleTransaction{transactionBase{handle: handle}, &sync.Mutex{}}
+}
+
+// NewModuleTransactionInvokerParallelConv allows initializing a transaction invoker
+// from the module side.
+// Conversations using this transaction can be multi-thread, but this requires
+// the application loading the module to support this, otherwise we may just
+// break their assumptions.
+func NewModuleTransactionInvokerParallelConv(handle NativeHandle) ModuleTransactionInvoker {
+	return &moduleTransaction{transactionBase{handle: handle}, nil}
 }
 
 func (m *moduleTransaction) InvokeHandler(handler ModuleHandlerFunc,
@@ -542,6 +560,10 @@ func (m *moduleTransaction) startConvMultiImpl(iface moduleTransactionIface,
 		goMsgs[i] = cMessage
 	}
 
+	if m.convMutex != nil {
+		m.convMutex.Lock()
+		defer m.convMutex.Unlock()
+	}
 	var cResponses *C.struct_pam_response
 	ret := iface.startConv(conv, C.int(len(requests)), cMessages, &cResponses)
 	if ret != success {
