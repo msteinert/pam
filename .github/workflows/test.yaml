@@ -29,14 +29,25 @@ jobs:
       run: sudo useradd -d /tmp/test -p '$1$Qd8H95T5$RYSZQeoFbEB.gS19zS99A0' -s /bin/false test
     - name: Checkout code
       uses: actions/checkout@v4
+    - name: Test
+      run: sudo go test -v -cover -coverprofile=coverage.out ./...
+    - name: Test with Address Sanitizer
+      env:
+        GO_PAM_TEST_WITH_ASAN: true
+        CGO_CFLAGS: "-O0 -g3 -fno-omit-frame-pointer"
+      run: |
+        # Do not run sudo-requiring go tests because as PAM has some leaks in 22.04
+        go test -v -asan -cover -coverprofile=coverage-asan-tx.out -gcflags=all="-N -l"
+
+        # Run the rest of tests normally
+        sudo go test -v -cover -coverprofile=coverage-asan-module.out -asan -gcflags=all="-N -l" -run Module
+        sudo go test -C cmd -coverprofile=coverage-asan.out -v -asan -gcflags=all="-N -l" ./...
     - name: Generate example module
       run: |
         rm -f example-module/pam_go.so
         go generate -C example-module -v
         test -e example-module/pam_go.so
         git diff --exit-code example-module
-    - name: Test
-      run: sudo go test -v -cover -coverprofile=coverage.out ./...
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v3
       env:

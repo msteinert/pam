@@ -23,6 +23,7 @@ func ensureNoError(t *testing.T, err error) {
 
 func Test_NewNullModuleTransaction(t *testing.T) {
 	t.Parallel()
+	t.Cleanup(maybeDoLeakCheck)
 	mt := moduleTransaction{}
 
 	if mt.handle != nil {
@@ -137,6 +138,7 @@ func Test_NewNullModuleTransaction(t *testing.T) {
 		tc := tc
 		t.Run(name+"-error-check", func(t *testing.T) {
 			t.Parallel()
+			t.Cleanup(maybeDoLeakCheck)
 			data, err := tc.testFunc(t)
 
 			switch d := data.(type) {
@@ -202,6 +204,7 @@ func Test_NewNullModuleTransaction(t *testing.T) {
 
 func Test_ModuleTransaction_InvokeHandler(t *testing.T) {
 	t.Parallel()
+	t.Cleanup(maybeDoLeakCheck)
 	mt := &moduleTransaction{}
 
 	err := mt.InvokeHandler(nil, 0, nil)
@@ -308,6 +311,7 @@ func Test_ModuleTransaction_InvokeHandler(t *testing.T) {
 func testMockModuleTransaction(t *testing.T, mt *moduleTransaction) {
 	t.Helper()
 	t.Parallel()
+	t.Cleanup(maybeDoLeakCheck)
 
 	tests := map[string]struct {
 		testFunc            func(mock *mockModuleTransaction) (any, error)
@@ -898,6 +902,7 @@ func testMockModuleTransaction(t *testing.T, mt *moduleTransaction) {
 		tc := tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+			t.Cleanup(maybeDoLeakCheck)
 			mock := newMockModuleTransaction(&mockModuleTransaction{T: t,
 				Expectations: tc.mockExpectations, RetData: tc.mockRetData,
 				ConversationHandler: tc.conversationHandler})
