@@ -3,6 +3,7 @@ package pam
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -894,6 +895,47 @@ func testMockModuleTransaction(t *testing.T, mt *moduleTransaction) {
 					return data, err
 				}
 				return data.Data(), err
+			},
+		},
+		"StartConv-Binary-with-ConvFunc": {
+			expectedValue: []byte{0x01, 0x02, 0x03, 0x05, 0x00, 0x99},
+			conversationHandler: BinaryConversationFunc(func(ptr BinaryPointer) ([]byte, error) {
+				bytes, _ := testBinaryDataDecoder(ptr)
+				expectedBinary := []byte(
+					"\x00This is a binary data request\xC5\x00\xffYes it is!")
+				if !reflect.DeepEqual(bytes, expectedBinary) {
+					return nil, fmt.Errorf("%w, data mismatch %#v vs %#v",
+						ErrConv, bytes, expectedBinary)
+				}
+				return testBinaryDataEncoder([]byte{0x01, 0x02, 0x03, 0x05, 0x00, 0x99}), nil
+			}),
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				bytes := testBinaryDataEncoder([]byte(
+					"\x00This is a binary data request\xC5\x00\xffYes it is!"))
+				data, err := mt.startConvImpl(mock, NewBinaryConvRequestFromBytes(bytes))
+				if err != nil {
+					return data, err
+				}
+				resp, _ := data.(BinaryConvResponse)
+				return resp.Decode(testBinaryDataDecoder)
+			},
+		},
+		"StartConv-Binary-with-ConvFunc-error": {
+			expectedError: ErrConv,
+			conversationHandler: BinaryConversationFunc(func(ptr BinaryPointer) ([]byte, error) {
+				return nil, errors.New("got an error")
+			}),
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvImpl(mock, NewBinaryConvRequestFromBytes([]byte{}))
+			},
+		},
+		"StartConv-String-with-ConvBinaryFunc": {
+			expectedError: ErrConv,
+			conversationHandler: BinaryConversationFunc(func(ptr BinaryPointer) ([]byte, error) {
+				return nil, nil
+			}),
+			testFunc: func(mock *mockModuleTransaction) (any, error) {
+				return mt.startConvImpl(mock, NewStringConvRequest(TextInfo, "prompt"))
 			},
 		},
 	}

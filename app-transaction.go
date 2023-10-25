@@ -44,6 +44,20 @@ func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 	return f(s, msg)
 }
 
+// BinaryConversationFunc is an adapter to allow the use of ordinary functions
+// as binary (only) conversation callbacks.
+type BinaryConversationFunc func(BinaryPointer) ([]byte, error)
+
+// RespondPAMBinary is a conversation callback adapter.
+func (f BinaryConversationFunc) RespondPAMBinary(ptr BinaryPointer) ([]byte, error) {
+	return f(ptr)
+}
+
+// RespondPAM is a dummy conversation callback adapter.
+func (f BinaryConversationFunc) RespondPAM(Style, string) (string, error) {
+	return "", ErrConv
+}
+
 // _go_pam_conv_handler is a C wrapper for the conversation callback function.
 //
 //export _go_pam_conv_handler
