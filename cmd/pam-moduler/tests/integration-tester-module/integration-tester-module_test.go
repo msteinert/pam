@@ -949,6 +949,10 @@ func Test_Moduler_IntegrationTesterModule(t *testing.T) {
 				if !pam.CheckPamHasBinaryProtocol() {
 					t.Skip("Binary protocol is not supported")
 				}
+			case pam.BinaryPointerConversationHandler:
+				if !pam.CheckPamHasBinaryProtocol() {
+					t.Skip("Binary protocol is not supported")
+				}
 			}
 
 			tx, err := pam.StartConfDir(name, tc.user, tc.credentials, ts.WorkDir())
