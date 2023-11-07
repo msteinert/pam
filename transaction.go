@@ -94,6 +94,7 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 	var err error
 	v := cgo.Handle(c).Value()
 	style := Style(s)
+	var handler ConversationHandler
 	switch cb := v.(type) {
 	case BinaryConversationHandler:
 		if style == BinaryPrompt {
@@ -102,15 +103,18 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 				return nil, C.PAM_CONV_ERR
 			}
 			return (*C.char)(C.CBytes(bytes)), C.PAM_SUCCESS
-		} else {
-			r, err = cb.RespondPAM(style, C.GoString(msg))
 		}
+		handler = cb
 	case ConversationHandler:
 		if style == BinaryPrompt {
 			return nil, C.PAM_AUTHINFO_UNAVAIL
 		}
-		r, err = cb.RespondPAM(style, C.GoString(msg))
+		handler = cb
 	}
+	if handler == nil {
+		return nil, C.PAM_CONV_ERR
+	}
+	r, err = handler.RespondPAM(style, C.GoString(msg))
 	if err != nil {
 		return nil, C.PAM_CONV_ERR
 	}
@@ -118,6 +122,8 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 }
 
 // Transaction is the application's handle for a PAM transaction.
+//
+//nolint:errname
 type Transaction struct {
 	handle *C.pam_handle_t
 	conv   *C.struct_pam_conv
@@ -195,7 +201,7 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 }
 
 func (t *Transaction) Error() string {
-	return C.GoString(C.pam_strerror(t.handle, C.int(t.status)))
+	return C.GoString(C.pam_strerror(t.handle, t.status))
 }
 
 // Item is a an PAM information type.
