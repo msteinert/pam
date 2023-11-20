@@ -299,7 +299,7 @@ const (
 	// EstablishCred indicates that credentials should be established
 	// for the user.
 	EstablishCred Flags = C.PAM_ESTABLISH_CRED
-	// DeleteCred inidicates that credentials should be deleted.
+	// DeleteCred indicates that credentials should be deleted.
 	DeleteCred Flags = C.PAM_DELETE_CRED
 	// ReinitializeCred indicates that credentials should be fully
 	// reinitialized.
