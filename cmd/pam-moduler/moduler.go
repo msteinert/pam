@@ -119,9 +119,9 @@ func main() {
 		tags = *buildTags
 	}
 
-	var generateTags []string
+	generateTags := []string{"go_pam_module"}
 	if len(*moduleBuildTags) > 0 {
-		generateTags = strings.Split(*moduleBuildTags, ",")
+		generateTags = append(generateTags, strings.Split(*moduleBuildTags, ",")...)
 	}
 
 	var buildFlags []string

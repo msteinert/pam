@@ -75,19 +75,6 @@ func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 	return f(s, msg)
 }
 
-// _go_pam_conv_handler is a C wrapper for the conversation callback function.
-//
-//export _go_pam_conv_handler
-func _go_pam_conv_handler(msg *C.struct_pam_message, c C.uintptr_t, outMsg **C.char) C.int {
-	convHandler, ok := cgo.Handle(c).Value().(ConversationHandler)
-	if !ok || convHandler == nil {
-		return C.int(ErrConv)
-	}
-	replyMsg, r := pamConvHandler(Style(msg.msg_style), msg.msg, convHandler)
-	*outMsg = replyMsg
-	return r
-}
-
 // pamConvHandler is a Go wrapper for the conversation callback function.
 func pamConvHandler(style Style, msg *C.char, handler ConversationHandler) (*C.char, C.int) {
 	var r string
