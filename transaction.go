@@ -4,21 +4,7 @@ package pam
 //#cgo CFLAGS: -Wall -Wno-unused-variable -std=c99
 //#cgo LDFLAGS: -lpam
 //
-//#include <security/pam_appl.h>
-//#include <stdlib.h>
-//#include <stdint.h>
-//
-//#ifdef PAM_BINARY_PROMPT
-//#define BINARY_PROMPT_IS_SUPPORTED 1
-//#else
-//#include <limits.h>
-//#define PAM_BINARY_PROMPT INT_MAX
-//#define BINARY_PROMPT_IS_SUPPORTED 0
-//#endif
-//
-//void init_pam_conv(struct pam_conv *conv, uintptr_t);
-//int pam_start_confdir(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh) __attribute__ ((weak));
-//int check_pam_start_confdir(void);
+//#include "transaction.h"
 import "C"
 
 import (
@@ -89,16 +75,24 @@ func (f ConversationFunc) RespondPAM(s Style, msg string) (string, error) {
 	return f(s, msg)
 }
 
-// cbPAMConv is a wrapper for the conversation callback function.
+// _go_pam_conv_handler is a C wrapper for the conversation callback function.
 //
-//export cbPAMConv
-func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
+//export _go_pam_conv_handler
+func _go_pam_conv_handler(msg *C.struct_pam_message, c C.uintptr_t, outMsg **C.char) C.int {
+	convHandler, ok := cgo.Handle(c).Value().(ConversationHandler)
+	if !ok || convHandler == nil {
+		return C.int(ErrConv)
+	}
+	replyMsg, r := pamConvHandler(Style(msg.msg_style), msg.msg, convHandler)
+	*outMsg = replyMsg
+	return r
+}
+
+// pamConvHandler is a Go wrapper for the conversation callback function.
+func pamConvHandler(style Style, msg *C.char, handler ConversationHandler) (*C.char, C.int) {
 	var r string
 	var err error
-	v := cgo.Handle(c).Value()
-	style := Style(s)
-	var handler ConversationHandler
-	switch cb := v.(type) {
+	switch cb := handler.(type) {
 	case BinaryConversationHandler:
 		if style == BinaryPrompt {
 			bytes, err := cb.RespondPAMBinary(BinaryPointer(msg))
@@ -116,8 +110,7 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 			return nil, C.int(ErrConv)
 		}
 		handler = cb
-	}
-	if handler == nil {
+	default:
 		return nil, C.int(ErrConv)
 	}
 	r, err = handler.RespondPAM(style, C.GoString(msg))
