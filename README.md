@@ -1,6 +1,6 @@
-[![GoDoc](https://godoc.org/github.com/msteinert/pam?status.svg)](http://godoc.org/github.com/msteinert/pam)
+[![GoDoc](https://godoc.org/github.com/msteinert/pam/v2?status.svg)](http://godoc.org/github.com/msteinert/pam/v2)
 [![codecov](https://codecov.io/gh/msteinert/pam/graph/badge.svg?token=L1K3UTB065)](https://codecov.io/gh/msteinert/pam)
-[![Go Report Card](https://goreportcard.com/badge/github.com/msteinert/pam)](https://goreportcard.com/report/github.com/msteinert/pam)
+[![Go Report Card](https://goreportcard.com/badge/github.com/msteinert/pam/v2)](https://goreportcard.com/report/github.com/msteinert/pam/v2)
 
 # Go PAM
 
@@ -25,5 +25,5 @@ Then execute the tests:
 $ sudo GOPATH=$GOPATH $(which go) test -v
 ```
 
-[1]: http://godoc.org/github.com/msteinert/pam
+[1]: http://godoc.org/github.com/msteinert/pam/v2
 [2]: http://www.linux-pam.org/Linux-PAM-html/Linux-PAM_ADG.html
