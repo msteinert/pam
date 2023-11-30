@@ -14,7 +14,7 @@ import (
 // should cause PAM to ask its conversation handler for a username and password
 // in sequence.
 func Example() {
-	t, err := pam.StartFunc("", "", func(s pam.Style, msg string) (string, error) {
+	t, err := pam.StartFunc("passwd", "", func(s pam.Style, msg string) (string, error) {
 		switch s {
 		case pam.PromptEchoOff:
 			fmt.Print(msg)
@@ -40,12 +40,19 @@ func Example() {
 		}
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "start: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "start: %v\n", err)
 		os.Exit(1)
 	}
+	defer func() {
+		err := t.End()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "end: %v\n", err)
+			os.Exit(1)
+		}
+	}()
 	err = t.Authenticate(0)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "authenticate: %s\n", err.Error())
+		fmt.Fprintf(os.Stderr, "authenticate: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Println("authentication succeeded!")
