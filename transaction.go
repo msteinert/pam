@@ -22,12 +22,15 @@ package pam
 import "C"
 
 import (
-	"errors"
-	"runtime"
+	"fmt"
 	"runtime/cgo"
 	"strings"
+	"sync/atomic"
 	"unsafe"
 )
+
+// success indicates a successful function return.
+const success = C.PAM_SUCCESS
 
 // Style is the type of message that the conversation handler should display.
 type Style int
@@ -39,16 +42,16 @@ const (
 	PromptEchoOff Style = C.PAM_PROMPT_ECHO_OFF
 	// PromptEchoOn indicates the conversation handler should obtain a
 	// string while echoing text.
-	PromptEchoOn = C.PAM_PROMPT_ECHO_ON
+	PromptEchoOn Style = C.PAM_PROMPT_ECHO_ON
 	// ErrorMsg indicates the conversation handler should display an
 	// error message.
-	ErrorMsg = C.PAM_ERROR_MSG
+	ErrorMsg Style = C.PAM_ERROR_MSG
 	// TextInfo indicates the conversation handler should display some
 	// text.
-	TextInfo = C.PAM_TEXT_INFO
+	TextInfo Style = C.PAM_TEXT_INFO
 	// BinaryPrompt indicates the conversation handler that should implement
 	// the private binary protocol
-	BinaryPrompt = C.PAM_BINARY_PROMPT
+	BinaryPrompt Style = C.PAM_BINARY_PROMPT
 )
 
 // ConversationHandler is an interface for objects that can be used as
@@ -94,42 +97,61 @@ func cbPAMConv(s C.int, msg *C.char, c C.uintptr_t) (*C.char, C.int) {
 	var err error
 	v := cgo.Handle(c).Value()
 	style := Style(s)
+	var handler ConversationHandler
 	switch cb := v.(type) {
 	case BinaryConversationHandler:
 		if style == BinaryPrompt {
 			bytes, err := cb.RespondPAMBinary(BinaryPointer(msg))
 			if err != nil {
-				return nil, C.PAM_CONV_ERR
+				return nil, C.int(ErrConv)
 			}
-			return (*C.char)(C.CBytes(bytes)), C.PAM_SUCCESS
-		} else {
-			r, err = cb.RespondPAM(style, C.GoString(msg))
+			return (*C.char)(C.CBytes(bytes)), success
 		}
+		handler = cb
 	case ConversationHandler:
 		if style == BinaryPrompt {
-			return nil, C.PAM_AUTHINFO_UNAVAIL
+			return nil, C.int(ErrConv)
 		}
-		r, err = cb.RespondPAM(style, C.GoString(msg))
+		handler = cb
 	}
+	if handler == nil {
+		return nil, C.int(ErrConv)
+	}
+	r, err = handler.RespondPAM(style, C.GoString(msg))
 	if err != nil {
-		return nil, C.PAM_CONV_ERR
+		return nil, C.int(ErrConv)
 	}
-	return C.CString(r), C.PAM_SUCCESS
+	return C.CString(r), success
 }
 
 // Transaction is the application's handle for a PAM transaction.
 type Transaction struct {
-	handle *C.pam_handle_t
-	conv   *C.struct_pam_conv
-	status C.int
-	c      cgo.Handle
+	handle     *C.pam_handle_t
+	conv       *C.struct_pam_conv
+	lastStatus atomic.Int32
+	c          cgo.Handle
 }
 
-// transactionFinalizer cleans up the PAM handle and deletes the callback
-// function.
-func transactionFinalizer(t *Transaction) {
-	C.pam_end(t.handle, t.status)
-	t.c.Delete()
+// End cleans up the PAM handle and deletes the callback function.
+// It must be called when done with the transaction.
+func (t *Transaction) End() error {
+	handle := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&t.handle)), nil)
+	if handle == nil {
+		return nil
+	}
+
+	defer t.c.Delete()
+	return t.handlePamStatus(C.pam_end((*C.pam_handle_t)(handle),
+		C.int(t.lastStatus.Load())))
+}
+
+// Allows to call pam functions managing return status
+func (t *Transaction) handlePamStatus(cStatus C.int) error {
+	t.lastStatus.Store(int32(cStatus))
+	if status := Error(cStatus); status != success {
+		return status
+	}
+	return nil
 }
 
 // Start initiates a new PAM transaction. Service is treated identically to
@@ -137,13 +159,21 @@ func transactionFinalizer(t *Transaction) {
 //
 // All application calls to PAM begin with Start*. The returned
 // transaction provides an interface to the remainder of the API.
+//
+// It's responsibility of the Transaction owner to release all the resources
+// allocated underneath by PAM by calling End() once done.
+//
+// It's not advised to End the transaction using a runtime.SetFinalizer unless
+// you're absolutely sure that your stack is multi-thread friendly (normally it
+// is not!) and using a LockOSThread/UnlockOSThread pair.
 func Start(service, user string, handler ConversationHandler) (*Transaction, error) {
 	return start(service, user, handler, "")
 }
 
-// StartFunc registers the handler func as a conversation handler.
+// StartFunc registers the handler func as a conversation handler and starts
+// the transaction (see Start() documentation).
 func StartFunc(service, user string, handler func(Style, string) (string, error)) (*Transaction, error) {
-	return Start(service, user, ConversationFunc(handler))
+	return start(service, user, ConversationFunc(handler), "")
 }
 
 // StartConfDir initiates a new PAM transaction. Service is treated identically to
@@ -153,9 +183,18 @@ func StartFunc(service, user string, handler func(Style, string) (string, error)
 //
 // All application calls to PAM begin with Start*. The returned
 // transaction provides an interface to the remainder of the API.
+//
+// It's responsibility of the Transaction owner to release all the resources
+// allocated underneath by PAM by calling End() once done.
+//
+// It's not advised to End the transaction using a runtime.SetFinalizer unless
+// you're absolutely sure that your stack is multi-thread friendly (normally it
+// is not!) and using a LockOSThread/UnlockOSThread pair.
 func StartConfDir(service, user string, handler ConversationHandler, confDir string) (*Transaction, error) {
 	if !CheckPamHasStartConfdir() {
-		return nil, errors.New("StartConfDir() was used, but the pam version on the system is not recent enough")
+		return nil, fmt.Errorf(
+			"%w: StartConfDir was used, but the pam version on the system is not recent enough",
+			ErrSystem)
 	}
 
 	return start(service, user, handler, confDir)
@@ -165,15 +204,16 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 	switch handler.(type) {
 	case BinaryConversationHandler:
 		if !CheckPamHasBinaryProtocol() {
-			return nil, errors.New("BinaryConversationHandler() was used, but it is not supported by this platform")
+			return nil, fmt.Errorf("%w: BinaryConversationHandler was used, but it is not supported by this platform",
+				ErrSystem)
 		}
 	}
 	t := &Transaction{
 		conv: &C.struct_pam_conv{},
 		c:    cgo.NewHandle(handler),
 	}
+
 	C.init_pam_conv(t.conv, C.uintptr_t(t.c))
-	runtime.SetFinalizer(t, transactionFinalizer)
 	s := C.CString(service)
 	defer C.free(unsafe.Pointer(s))
 	var u *C.char
@@ -181,21 +221,19 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 		u = C.CString(user)
 		defer C.free(unsafe.Pointer(u))
 	}
+	var err error
 	if confDir == "" {
-		t.status = C.pam_start(s, u, t.conv, &t.handle)
+		err = t.handlePamStatus(C.pam_start(s, u, t.conv, &t.handle))
 	} else {
 		c := C.CString(confDir)
 		defer C.free(unsafe.Pointer(c))
-		t.status = C.pam_start_confdir(s, u, t.conv, c, &t.handle)
+		err = t.handlePamStatus(C.pam_start_confdir(s, u, t.conv, c, &t.handle))
 	}
-	if t.status != C.PAM_SUCCESS {
-		return nil, t
+	if err != nil {
+		var _ = t.End()
+		return nil, err
 	}
 	return t, nil
-}
-
-func (t *Transaction) Error() string {
-	return C.GoString(C.pam_strerror(t.handle, C.int(t.status)))
 }
 
 // Item is a an PAM information type.
@@ -206,38 +244,42 @@ const (
 	// Service is the name which identifies the PAM stack.
 	Service Item = C.PAM_SERVICE
 	// User identifies the username identity used by a service.
-	User = C.PAM_USER
+	User Item = C.PAM_USER
 	// Tty is the terminal name.
-	Tty = C.PAM_TTY
+	Tty Item = C.PAM_TTY
 	// Rhost is the requesting host name.
-	Rhost = C.PAM_RHOST
+	Rhost Item = C.PAM_RHOST
 	// Authtok is the currently active authentication token.
-	Authtok = C.PAM_AUTHTOK
+	Authtok Item = C.PAM_AUTHTOK
 	// Oldauthtok is the old authentication token.
-	Oldauthtok = C.PAM_OLDAUTHTOK
+	Oldauthtok Item = C.PAM_OLDAUTHTOK
 	// Ruser is the requesting user name.
-	Ruser = C.PAM_RUSER
+	Ruser Item = C.PAM_RUSER
 	// UserPrompt is the string use to prompt for a username.
-	UserPrompt = C.PAM_USER_PROMPT
+	UserPrompt Item = C.PAM_USER_PROMPT
+	// FailDelay is the app supplied function to override failure delays.
+	FailDelay Item = C.PAM_FAIL_DELAY
+	// Xdisplay is the X display name
+	Xdisplay Item = C.PAM_XDISPLAY
+	// Xauthdata is the X server authentication data.
+	Xauthdata Item = C.PAM_XAUTHDATA
+	// AuthtokType is the type for pam_get_authtok
+	AuthtokType Item = C.PAM_AUTHTOK_TYPE
 )
 
 // SetItem sets a PAM information item.
 func (t *Transaction) SetItem(i Item, item string) error {
 	cs := unsafe.Pointer(C.CString(item))
 	defer C.free(cs)
-	t.status = C.pam_set_item(t.handle, C.int(i), cs)
-	if t.status != C.PAM_SUCCESS {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_set_item(t.handle, C.int(i), cs))
 }
 
 // GetItem retrieves a PAM information item.
 func (t *Transaction) GetItem(i Item) (string, error) {
 	var s unsafe.Pointer
-	t.status = C.pam_get_item(t.handle, C.int(i), &s)
-	if t.status != C.PAM_SUCCESS {
-		return "", t
+	err := t.handlePamStatus(C.pam_get_item(t.handle, C.int(i), &s))
+	if err != nil {
+		return "", err
 	}
 	return C.GoString((*C.char)(s)), nil
 }
@@ -253,32 +295,28 @@ const (
 	Silent Flags = C.PAM_SILENT
 	// DisallowNullAuthtok indicates that authorization should fail
 	// if the user does not have a registered authentication token.
-	DisallowNullAuthtok = C.PAM_DISALLOW_NULL_AUTHTOK
+	DisallowNullAuthtok Flags = C.PAM_DISALLOW_NULL_AUTHTOK
 	// EstablishCred indicates that credentials should be established
 	// for the user.
-	EstablishCred = C.PAM_ESTABLISH_CRED
-	// DeleteCred inidicates that credentials should be deleted.
-	DeleteCred = C.PAM_DELETE_CRED
+	EstablishCred Flags = C.PAM_ESTABLISH_CRED
+	// DeleteCred indicates that credentials should be deleted.
+	DeleteCred Flags = C.PAM_DELETE_CRED
 	// ReinitializeCred indicates that credentials should be fully
 	// reinitialized.
-	ReinitializeCred = C.PAM_REINITIALIZE_CRED
+	ReinitializeCred Flags = C.PAM_REINITIALIZE_CRED
 	// RefreshCred indicates that the lifetime of existing credentials
 	// should be extended.
-	RefreshCred = C.PAM_REFRESH_CRED
+	RefreshCred Flags = C.PAM_REFRESH_CRED
 	// ChangeExpiredAuthtok indicates that the authentication token
 	// should be changed if it has expired.
-	ChangeExpiredAuthtok = C.PAM_CHANGE_EXPIRED_AUTHTOK
+	ChangeExpiredAuthtok Flags = C.PAM_CHANGE_EXPIRED_AUTHTOK
 )
 
 // Authenticate is used to authenticate the user.
 //
 // Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) Authenticate(f Flags) error {
-	t.status = C.pam_authenticate(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_authenticate(t.handle, C.int(f)))
 }
 
 // SetCred is used to establish, maintain and delete the credentials of a
@@ -286,55 +324,35 @@ func (t *Transaction) Authenticate(f Flags) error {
 //
 // Valid flags: EstablishCred, DeleteCred, ReinitializeCred, RefreshCred
 func (t *Transaction) SetCred(f Flags) error {
-	t.status = C.pam_setcred(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_setcred(t.handle, C.int(f)))
 }
 
 // AcctMgmt is used to determine if the user's account is valid.
 //
 // Valid flags: Silent, DisallowNullAuthtok
 func (t *Transaction) AcctMgmt(f Flags) error {
-	t.status = C.pam_acct_mgmt(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_acct_mgmt(t.handle, C.int(f)))
 }
 
 // ChangeAuthTok is used to change the authentication token.
 //
 // Valid flags: Silent, ChangeExpiredAuthtok
 func (t *Transaction) ChangeAuthTok(f Flags) error {
-	t.status = C.pam_chauthtok(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_chauthtok(t.handle, C.int(f)))
 }
 
 // OpenSession sets up a user session for an authenticated user.
 //
 // Valid flags: Slient
 func (t *Transaction) OpenSession(f Flags) error {
-	t.status = C.pam_open_session(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_open_session(t.handle, C.int(f)))
 }
 
 // CloseSession closes a previously opened session.
 //
 // Valid flags: Silent
 func (t *Transaction) CloseSession(f Flags) error {
-	t.status = C.pam_close_session(t.handle, C.int(f))
-	if t.status != C.PAM_SUCCESS {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_close_session(t.handle, C.int(f)))
 }
 
 // PutEnv adds or changes the value of PAM environment variables.
@@ -345,11 +363,7 @@ func (t *Transaction) CloseSession(f Flags) error {
 func (t *Transaction) PutEnv(nameval string) error {
 	cs := C.CString(nameval)
 	defer C.free(unsafe.Pointer(cs))
-	t.status = C.pam_putenv(t.handle, cs)
-	if t.status != C.PAM_SUCCESS {
-		return t
-	}
-	return nil
+	return t.handlePamStatus(C.pam_putenv(t.handle, cs))
 }
 
 // GetEnv is used to retrieve a PAM environment variable.
@@ -372,9 +386,10 @@ func (t *Transaction) GetEnvList() (map[string]string, error) {
 	env := make(map[string]string)
 	p := C.pam_getenvlist(t.handle)
 	if p == nil {
-		t.status = C.PAM_BUF_ERR
-		return nil, t
+		t.lastStatus.Store(int32(ErrBuf))
+		return nil, ErrBuf
 	}
+	t.lastStatus.Store(success)
 	for q := p; *q != nil; q = next(q) {
 		chunks := strings.SplitN(C.GoString(*q), "=", 2)
 		if len(chunks) == 2 {

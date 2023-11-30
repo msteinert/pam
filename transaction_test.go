@@ -2,9 +2,41 @@ package pam
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"os/user"
+	"path/filepath"
+	"runtime"
+	"sync/atomic"
 	"testing"
+	"time"
+	"unsafe"
 )
+
+func maybeEndTransaction(t *testing.T, tx *Transaction) {
+	t.Helper()
+
+	if tx == nil {
+		return
+	}
+	err := tx.End()
+	if err != nil {
+		t.Fatalf("end #error: %v", err)
+	}
+}
+
+func ensureTransactionEnds(t *testing.T, tx *Transaction) {
+	t.Helper()
+
+	runtime.SetFinalizer(tx, func(tx *Transaction) {
+		// #nosec:G103 - the pointer conversion is checked.
+		handle := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&tx.handle)))
+		if handle == nil {
+			return
+		}
+		t.Fatalf("transaction has not been finalized")
+	})
+}
 
 func TestPAM_001(t *testing.T) {
 	u, _ := user.Current()
@@ -15,6 +47,8 @@ func TestPAM_001(t *testing.T) {
 	tx, err := StartFunc("", "test", func(s Style, msg string) (string, error) {
 		return p, nil
 	})
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
@@ -46,6 +80,8 @@ func TestPAM_002(t *testing.T) {
 		}
 		return "", errors.New("unexpected")
 	})
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
@@ -80,6 +116,8 @@ func TestPAM_003(t *testing.T) {
 		Password: "secret",
 	}
 	tx, err := Start("", "", c)
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
@@ -98,6 +136,8 @@ func TestPAM_004(t *testing.T) {
 		Password: "secret",
 	}
 	tx, err := Start("", "test", c)
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
@@ -115,8 +155,17 @@ func TestPAM_005(t *testing.T) {
 	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
 		return "secret", nil
 	})
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
+	}
+	service, err := tx.GetItem(Service)
+	if err != nil {
+		t.Fatalf("GetItem #error: %v", err)
+	}
+	if service != "passwd" {
+		t.Fatalf("Unexpected service: %v", service)
 	}
 	err = tx.ChangeAuthTok(Silent)
 	if err != nil {
@@ -132,6 +181,8 @@ func TestPAM_006(t *testing.T) {
 	tx, err := StartFunc("passwd", u.Username, func(s Style, msg string) (string, error) {
 		return "secret", nil
 	})
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
@@ -153,6 +204,8 @@ func TestPAM_007(t *testing.T) {
 	tx, err := StartFunc("", "test", func(s Style, msg string) (string, error) {
 		return "", errors.New("Sorry, it didn't work")
 	})
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
@@ -164,6 +217,9 @@ func TestPAM_007(t *testing.T) {
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
 	}
+	if !errors.Is(err, ErrAuth) {
+		t.Fatalf("error #unexpected error %v", err)
+	}
 }
 
 func TestPAM_ConfDir(t *testing.T) {
@@ -173,12 +229,24 @@ func TestPAM_ConfDir(t *testing.T) {
 		Password: "wrongsecret",
 	}
 	tx, err := StartConfDir("permit-service", u.Username, c, "test-services")
+	defer func() {
+		if tx != nil {
+			_ = tx.End()
+		}
+	}()
 	if !CheckPamHasStartConfdir() {
 		if err == nil {
 			t.Fatalf("start should have errored out as pam_start_confdir is not available: %v", err)
 		}
 		// nothing else we do, we don't support it.
 		return
+	}
+	service, err := tx.GetItem(Service)
+	if err != nil {
+		t.Fatalf("GetItem #error: %v", err)
+	}
+	if service != "permit-service" {
+		t.Fatalf("Unexpected service: %v", service)
 	}
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
@@ -190,17 +258,30 @@ func TestPAM_ConfDir(t *testing.T) {
 }
 
 func TestPAM_ConfDir_FailNoServiceOrUnsupported(t *testing.T) {
+	if !CheckPamHasStartConfdir() {
+		t.Skip("this requires PAM with Conf dir support")
+	}
 	u, _ := user.Current()
 	c := Credentials{
 		Password: "secret",
 	}
-	_, err := StartConfDir("does-not-exists", u.Username, c, ".")
+	tx, err := StartConfDir("does-not-exists", u.Username, c, ".")
 	if err == nil {
 		t.Fatalf("authenticate #expected an error")
+	}
+	if tx != nil {
+		t.Fatalf("authenticate #unexpected transaction")
 	}
 	s := err.Error()
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
+	}
+	var pamErr Error
+	if !errors.As(err, &pamErr) {
+		t.Fatalf("error #unexpected type: %#v", err)
+	}
+	if pamErr != ErrAbort {
+		t.Fatalf("error #unexpected status: %v", pamErr)
 	}
 }
 
@@ -216,8 +297,17 @@ func TestPAM_ConfDir_InfoMessage(t *testing.T) {
 			}
 			return "", errors.New("unexpected")
 		}), "test-services")
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
+	}
+	service, err := tx.GetItem(Service)
+	if err != nil {
+		t.Fatalf("GetItem #error: %v", err)
+	}
+	if service != "echo-service" {
+		t.Fatalf("Unexpected service: %v", service)
 	}
 	err = tx.Authenticate(0)
 	if err != nil {
@@ -229,10 +319,22 @@ func TestPAM_ConfDir_InfoMessage(t *testing.T) {
 }
 
 func TestPAM_ConfDir_Deny(t *testing.T) {
+	if !CheckPamHasStartConfdir() {
+		t.Skip("this requires PAM with Conf dir support")
+	}
 	u, _ := user.Current()
 	tx, err := StartConfDir("deny-service", u.Username, Credentials{}, "test-services")
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
+	}
+	service, err := tx.GetItem(Service)
+	if err != nil {
+		t.Fatalf("GetItem #error: %v", err)
+	}
+	if service != "deny-service" {
+		t.Fatalf("Unexpected service: %v", service)
 	}
 	err = tx.Authenticate(0)
 	if err == nil {
@@ -241,6 +343,9 @@ func TestPAM_ConfDir_Deny(t *testing.T) {
 	s := err.Error()
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
+	}
+	if !errors.Is(err, ErrAuth) {
+		t.Fatalf("error #unexpected error %v", err)
 	}
 }
 
@@ -251,6 +356,8 @@ func TestPAM_ConfDir_PromptForUserName(t *testing.T) {
 		Password: "wrongsecret",
 	}
 	tx, err := StartConfDir("succeed-if-user-test", "", c, "test-services")
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if !CheckPamHasStartConfdir() {
 		if err == nil {
 			t.Fatalf("start should have errored out as pam_start_confdir is not available: %v", err)
@@ -273,6 +380,8 @@ func TestPAM_ConfDir_WrongUserName(t *testing.T) {
 		Password: "wrongsecret",
 	}
 	tx, err := StartConfDir("succeed-if-user-test", "", c, "test-services")
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if !CheckPamHasStartConfdir() {
 		if err == nil {
 			t.Fatalf("start should have errored out as pam_start_confdir is not available: %v", err)
@@ -288,12 +397,20 @@ func TestPAM_ConfDir_WrongUserName(t *testing.T) {
 	if len(s) == 0 {
 		t.Fatalf("error #expected an error message")
 	}
+	if !errors.Is(err, ErrAuth) {
+		t.Fatalf("error #unexpected error %v", err)
+	}
 }
 
 func TestItem(t *testing.T) {
-	tx, _ := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
+	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
 		return "", nil
 	})
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
+	if err != nil {
+		t.Fatalf("start #error: %v", err)
+	}
 
 	s, err := tx.GetItem(Service)
 	if err != nil {
@@ -328,6 +445,8 @@ func TestEnv(t *testing.T) {
 	tx, err := StartFunc("", "", func(s Style, msg string) (string, error) {
 		return "", nil
 	})
+	ensureTransactionEnds(t, tx)
+	defer maybeEndTransaction(t, tx)
 	if err != nil {
 		t.Fatalf("start #error: %v", err)
 	}
@@ -388,6 +507,139 @@ func TestEnv(t *testing.T) {
 	if m["VAL3"] != "3" {
 		t.Fatalf("getenvlist #error: expected 3, got %v", m["VAL1"])
 	}
+}
+
+func Test_Error(t *testing.T) {
+	t.Parallel()
+	if !CheckPamHasStartConfdir() {
+		t.Skip("this requires PAM with Conf dir support")
+	}
+
+	statuses := map[string]error{
+		"success":               nil,
+		"open_err":              ErrOpen,
+		"symbol_err":            ErrSymbol,
+		"service_err":           ErrService,
+		"system_err":            ErrSystem,
+		"buf_err":               ErrBuf,
+		"perm_denied":           ErrPermDenied,
+		"auth_err":              ErrAuth,
+		"cred_insufficient":     ErrCredInsufficient,
+		"authinfo_unavail":      ErrAuthinfoUnavail,
+		"user_unknown":          ErrUserUnknown,
+		"maxtries":              ErrMaxtries,
+		"new_authtok_reqd":      ErrNewAuthtokReqd,
+		"acct_expired":          ErrAcctExpired,
+		"session_err":           ErrSession,
+		"cred_unavail":          ErrCredUnavail,
+		"cred_expired":          ErrCredExpired,
+		"cred_err":              ErrCred,
+		"no_module_data":        ErrNoModuleData,
+		"conv_err":              ErrConv,
+		"authtok_err":           ErrAuthtok,
+		"authtok_recover_err":   ErrAuthtokRecovery,
+		"authtok_lock_busy":     ErrAuthtokLockBusy,
+		"authtok_disable_aging": ErrAuthtokDisableAging,
+		"try_again":             ErrTryAgain,
+		"ignore":                nil, /* Ignore can't be returned */
+		"abort":                 ErrAbort,
+		"authtok_expired":       ErrAuthtokExpired,
+		"module_unknown":        ErrModuleUnknown,
+		"bad_item":              ErrBadItem,
+		"conv_again":            ErrConvAgain,
+		"incomplete":            ErrIncomplete,
+	}
+
+	type Action int
+	const (
+		account Action = iota + 1
+		auth
+		password
+		session
+	)
+	actions := map[string]Action{
+		"account":  account,
+		"auth":     auth,
+		"password": password,
+		"session":  session,
+	}
+
+	c := Credentials{}
+
+	servicePath := t.TempDir()
+
+	for ret, expected := range statuses {
+		ret := ret
+		expected := expected
+		for actionName, action := range actions {
+			actionName := actionName
+			action := action
+			t.Run(fmt.Sprintf("%s %s", ret, actionName), func(t *testing.T) {
+				t.Parallel()
+				serviceName := ret + "-" + actionName
+				serviceFile := filepath.Join(servicePath, serviceName)
+				contents := fmt.Sprintf("%[1]s requisite pam_debug.so "+
+					"auth=%[2]s cred=%[2]s acct=%[2]s prechauthtok=%[2]s "+
+					"chauthtok=%[2]s open_session=%[2]s close_session=%[2]s\n"+
+					"%[1]s requisite pam_permit.so\n", actionName, ret)
+
+				if err := os.WriteFile(serviceFile,
+					[]byte(contents), 0600); err != nil {
+					t.Fatalf("can't create service file %v: %v", serviceFile, err)
+				}
+
+				tx, err := StartConfDir(serviceName, "user", c, servicePath)
+				ensureTransactionEnds(t, tx)
+				defer maybeEndTransaction(t, tx)
+				if err != nil {
+					t.Fatalf("start #error: %v", err)
+				}
+
+				switch action {
+				case account:
+					err = tx.AcctMgmt(0)
+				case auth:
+					err = tx.Authenticate(0)
+				case password:
+					err = tx.ChangeAuthTok(0)
+				case session:
+					err = tx.OpenSession(0)
+				}
+
+				if !errors.Is(err, expected) {
+					t.Fatalf("error #unexpected status %#v vs %#v", err,
+						expected)
+				}
+
+				if err != nil {
+					var status Error
+					if !errors.As(err, &status) || err.Error() != status.Error() {
+						t.Fatalf("error #unexpected status %#v vs %#v", err.Error(),
+							status.Error())
+					}
+				}
+			})
+		}
+	}
+}
+
+func Test_Finalizer(t *testing.T) {
+	if !CheckPamHasStartConfdir() {
+		t.Skip("this requires PAM with Conf dir support")
+	}
+
+	func() {
+		tx, err := StartConfDir("permit-service", "", nil, "test-services")
+		ensureTransactionEnds(t, tx)
+		defer maybeEndTransaction(t, tx)
+		if err != nil {
+			t.Fatalf("start #error: %v", err)
+		}
+	}()
+
+	runtime.GC()
+	// sleep to switch to finalizer goroutine
+	time.Sleep(5 * time.Millisecond)
 }
 
 func TestFailure_001(t *testing.T) {
@@ -459,5 +711,13 @@ func TestFailure_009(t *testing.T) {
 	_, err := tx.GetItem(User)
 	if err == nil {
 		t.Fatalf("getenvlist #expected an error")
+	}
+}
+
+func TestFailure_010(t *testing.T) {
+	tx := Transaction{}
+	err := tx.End()
+	if err != nil {
+		t.Fatalf("end #unexpected error %v", err)
 	}
 }
