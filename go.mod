@@ -1,4 +1,4 @@
-module github.com/msteinert/pam
+module github.com/msteinert/pam/v2
 
 go 1.20
 
