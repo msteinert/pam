@@ -1,4 +1,5 @@
 [![GoDoc](https://godoc.org/github.com/msteinert/pam?status.svg)](http://godoc.org/github.com/msteinert/pam)
+[![codecov](https://codecov.io/gh/msteinert/pam/graph/badge.svg?token=L1K3UTB065)](https://codecov.io/gh/msteinert/pam)
 [![Go Report Card](https://goreportcard.com/badge/github.com/msteinert/pam)](https://goreportcard.com/report/github.com/msteinert/pam)
 
 # Go PAM
