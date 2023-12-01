@@ -30,18 +30,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     - name: Test
-      run: sudo go test -v -cover -coverprofile=coverage.out ./...
+      run: sudo go test -v -cover -coverprofile=coverage.out -coverpkg=./... ./...
     - name: Test with Address Sanitizer
       env:
         GO_PAM_TEST_WITH_ASAN: true
         CGO_CFLAGS: "-O0 -g3 -fno-omit-frame-pointer"
       run: |
         # Do not run sudo-requiring go tests because as PAM has some leaks in 22.04
-        go test -v -asan -cover -coverprofile=coverage-asan-tx.out -gcflags=all="-N -l"
+        go test -v -asan -cover -coverprofile=coverage-asan-tx.out -coverpkg=./... -gcflags=all="-N -l"
 
         # Run the rest of tests normally
-        sudo go test -v -cover -coverprofile=coverage-asan-module.out -asan -gcflags=all="-N -l" -run Module
-        sudo go test -C cmd -coverprofile=coverage-asan.out -v -asan -gcflags=all="-N -l" ./...
+        sudo go test -v -cover -coverprofile=coverage-asan-module.out -coverpkg=./... -asan -gcflags=all="-N -l" -run Module
+        sudo go test -C cmd -coverprofile=coverage-asan.out -v -coverpkg=./... -asan -gcflags=all="-N -l" ./...
     - name: Generate example module
       run: |
         rm -f example-module/pam_go.so
