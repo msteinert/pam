@@ -15,7 +15,9 @@ jobs:
           go-version: '1.21'
           cache: false
       - name: Install PAM
-        run: sudo apt install -y libpam-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpam-dev
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
