@@ -1,7 +1,7 @@
 // Package pam provides a wrapper for the PAM application API.
 package pam
 
-//#cgo CFLAGS: -Wall -std=c99
+//#cgo CFLAGS: -Wall -Wno-unused-variable -std=c99
 //#cgo LDFLAGS: -lpam
 //
 //#include <security/pam_appl.h>
