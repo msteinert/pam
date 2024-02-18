@@ -19,7 +19,7 @@ const success = C.PAM_SUCCESS
 // Style is the type of message that the conversation handler should display.
 type Style int
 
-// Coversation handler style types.
+// Conversation handler style types.
 const (
 	// PromptEchoOff indicates the conversation handler should obtain a
 	// string without echoing any text.
