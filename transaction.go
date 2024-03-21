@@ -138,6 +138,13 @@ const (
 	// ChangeExpiredAuthtok indicates that the authentication token
 	// should be changed if it has expired.
 	ChangeExpiredAuthtok Flags = C.PAM_CHANGE_EXPIRED_AUTHTOK
+	// PrelimCheck indicates that the password service should only
+	// perform preliminary checks. No passwords should be updated.
+	PrelimCheck Flags = C.PAM_PRELIM_CHECK
+	// UpdateAuthtok indicates that password service should update
+	// passwords Note: [pam.PrelimCheck] and [pam.UpdateAuthtok] cannot
+	// both be set simultaneously!
+	UpdateAuthtok Flags = C.PAM_UPDATE_AUTHTOK
 )
 
 // PutEnv adds or changes the value of PAM environment variables.

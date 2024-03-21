@@ -14,6 +14,14 @@
 #define BINARY_PROMPT_IS_SUPPORTED 0
 #endif
 
+#ifndef PAM_PRELIM_CHECK
+#define PAM_PRELIM_CHECK 0
+#endif
+
+#ifndef PAM_UPDATE_AUTHTOK
+#define PAM_UPDATE_AUTHTOK 0
+#endif
+
 #ifdef __sun
 #define PAM_CONST
 #else
