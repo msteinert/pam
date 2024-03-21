@@ -39,6 +39,7 @@ func ensureTransactionEnds(t *testing.T, tx *Transaction) {
 }
 
 func TestPAM_001(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	u, _ := user.Current()
 	if u.Uid != "0" {
 		t.Skip("run this test as root")
@@ -67,6 +68,7 @@ func TestPAM_001(t *testing.T) {
 }
 
 func TestPAM_002(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	u, _ := user.Current()
 	if u.Uid != "0" {
 		t.Skip("run this test as root")
@@ -107,6 +109,7 @@ func (c Credentials) RespondPAM(s Style, msg string) (string, error) {
 }
 
 func TestPAM_003(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	u, _ := user.Current()
 	if u.Uid != "0" {
 		t.Skip("run this test as root")
@@ -128,6 +131,7 @@ func TestPAM_003(t *testing.T) {
 }
 
 func TestPAM_004(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	u, _ := user.Current()
 	if u.Uid != "0" {
 		t.Skip("run this test as root")
@@ -148,9 +152,13 @@ func TestPAM_004(t *testing.T) {
 }
 
 func TestPAM_005(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	u, _ := user.Current()
 	if u.Uid != "0" {
 		t.Skip("run this test as root")
+	}
+	if _, found := os.LookupEnv("GO_PAM_TEST_WITH_ASAN"); found {
+		t.Skip("test fails under ASAN")
 	}
 	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
 		return "secret", nil
@@ -174,6 +182,7 @@ func TestPAM_005(t *testing.T) {
 }
 
 func TestPAM_006(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	u, _ := user.Current()
 	if u.Uid != "0" {
 		t.Skip("run this test as root")
@@ -197,6 +206,7 @@ func TestPAM_006(t *testing.T) {
 }
 
 func TestPAM_007(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	u, _ := user.Current()
 	if u.Uid != "0" {
 		t.Skip("run this test as root")
@@ -223,6 +233,7 @@ func TestPAM_007(t *testing.T) {
 }
 
 func TestPAM_ConfDir(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	u, _ := user.Current()
 	c := Credentials{
 		// the custom service always permits even with wrong password.
@@ -258,6 +269,7 @@ func TestPAM_ConfDir(t *testing.T) {
 }
 
 func TestPAM_ConfDir_FailNoServiceOrUnsupported(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	if !CheckPamHasStartConfdir() {
 		t.Skip("this requires PAM with Conf dir support")
 	}
@@ -286,6 +298,7 @@ func TestPAM_ConfDir_FailNoServiceOrUnsupported(t *testing.T) {
 }
 
 func TestPAM_ConfDir_InfoMessage(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	u, _ := user.Current()
 	var infoText string
 	tx, err := StartConfDir("echo-service", u.Username,
@@ -319,6 +332,7 @@ func TestPAM_ConfDir_InfoMessage(t *testing.T) {
 }
 
 func TestPAM_ConfDir_Deny(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	if !CheckPamHasStartConfdir() {
 		t.Skip("this requires PAM with Conf dir support")
 	}
@@ -350,6 +364,7 @@ func TestPAM_ConfDir_Deny(t *testing.T) {
 }
 
 func TestPAM_ConfDir_PromptForUserName(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	c := Credentials{
 		User: "testuser",
 		// the custom service only cares about correct user name.
@@ -375,6 +390,7 @@ func TestPAM_ConfDir_PromptForUserName(t *testing.T) {
 }
 
 func TestPAM_ConfDir_WrongUserName(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	c := Credentials{
 		User:     "wronguser",
 		Password: "wrongsecret",
@@ -403,6 +419,7 @@ func TestPAM_ConfDir_WrongUserName(t *testing.T) {
 }
 
 func TestItem(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
 		return "", nil
 	})
@@ -442,6 +459,7 @@ func TestItem(t *testing.T) {
 }
 
 func TestEnv(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx, err := StartFunc("", "", func(s Style, msg string) (string, error) {
 		return "", nil
 	})
@@ -511,6 +529,7 @@ func TestEnv(t *testing.T) {
 
 func Test_Error(t *testing.T) {
 	t.Parallel()
+	t.Cleanup(maybeDoLeakCheck)
 	if !CheckPamHasStartConfdir() {
 		t.Skip("this requires PAM with Conf dir support")
 	}
@@ -624,6 +643,7 @@ func Test_Error(t *testing.T) {
 }
 
 func Test_Finalizer(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	if !CheckPamHasStartConfdir() {
 		t.Skip("this requires PAM with Conf dir support")
 	}
@@ -643,6 +663,7 @@ func Test_Finalizer(t *testing.T) {
 }
 
 func TestFailure_001(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	_, err := tx.GetEnvList()
 	if err == nil {
@@ -651,6 +672,7 @@ func TestFailure_001(t *testing.T) {
 }
 
 func TestFailure_002(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	err := tx.PutEnv("")
 	if err == nil {
@@ -659,6 +681,7 @@ func TestFailure_002(t *testing.T) {
 }
 
 func TestFailure_003(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	err := tx.CloseSession(0)
 	if err == nil {
@@ -667,6 +690,7 @@ func TestFailure_003(t *testing.T) {
 }
 
 func TestFailure_004(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	err := tx.OpenSession(0)
 	if err == nil {
@@ -675,6 +699,7 @@ func TestFailure_004(t *testing.T) {
 }
 
 func TestFailure_005(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	err := tx.ChangeAuthTok(0)
 	if err == nil {
@@ -683,6 +708,7 @@ func TestFailure_005(t *testing.T) {
 }
 
 func TestFailure_006(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	err := tx.AcctMgmt(0)
 	if err == nil {
@@ -691,6 +717,7 @@ func TestFailure_006(t *testing.T) {
 }
 
 func TestFailure_007(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	err := tx.SetCred(0)
 	if err == nil {
@@ -699,6 +726,7 @@ func TestFailure_007(t *testing.T) {
 }
 
 func TestFailure_008(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	err := tx.SetItem(User, "test")
 	if err == nil {
@@ -707,6 +735,7 @@ func TestFailure_008(t *testing.T) {
 }
 
 func TestFailure_009(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	_, err := tx.GetItem(User)
 	if err == nil {
@@ -715,6 +744,7 @@ func TestFailure_009(t *testing.T) {
 }
 
 func TestFailure_010(t *testing.T) {
+	t.Cleanup(maybeDoLeakCheck)
 	tx := Transaction{}
 	err := tx.End()
 	if err != nil {
