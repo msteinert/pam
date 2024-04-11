@@ -65,7 +65,7 @@ var (
 	libName          = flag.String("libname", "", "output library name; default pam_go.so")
 	typeName         = flag.String("type", "", "type name to be used as pam.ModuleHandler")
 	buildTags        = flag.String("tags", "", "build tags expression to append to use in the go:build directive")
-	skipGenerator    = flag.Bool("no-generator", false, "whether to add go:generator directives to the generated source")
+	skipGenerator    = flag.Bool("no-generator", false, "whether to add go:generate directives to the generated source")
 	moduleBuildFlags = flag.String("build-flags", "", "comma-separated list of go build flags to use when generating the module")
 	moduleBuildTags  = flag.String("build-tags", "", "comma-separated list of build tags to use when generating the module")
 	noMain           = flag.Bool("no-main", false, "whether to add an empty main to generated file")
@@ -89,14 +89,17 @@ func main() {
 		if *libName != "" {
 			fmt.Fprintf(os.Stderr,
 				"Generator directives disabled, libname will have no effect\n")
+			*libName = ""
 		}
 		if *moduleBuildTags != "" {
 			fmt.Fprintf(os.Stderr,
 				"Generator directives disabled, build-tags will have no effect\n")
+			*moduleBuildTags = ""
 		}
 		if *moduleBuildFlags != "" {
 			fmt.Fprintf(os.Stderr,
 				"Generator directives disabled, build-flags will have no effect\n")
+			*moduleBuildFlags = ""
 		}
 	}
 
