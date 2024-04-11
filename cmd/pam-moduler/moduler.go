@@ -210,10 +210,10 @@ func (g *Generator) generate() {
 		{"chauthtok", "ChangeAuthTok"},
 	}
 
-	g.printf(`//go:generate go build "-ldflags=-extldflags -Wl,-soname,%[2]s.so" `+
-		`-buildmode=c-shared -o %[2]s.so %[3]s %[4]s
+	g.printf(`//go:generate go build "-ldflags=-extldflags -Wl,-soname,%[1]s.so" `+
+		`-buildmode=c-shared -o %[1]s.so %[2]s %[3]s
 `,
-		g.outputName, g.libName, buildTagsArg, strings.Join(g.buildFlags, " "))
+		g.libName, buildTagsArg, strings.Join(g.buildFlags, " "))
 
 	g.printf(`
 // Package main is the package for the PAM module library.
