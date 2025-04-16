@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef __sun
+#if defined(__sun) && !defined(__illumos__)
 #define PAM_CONST
 #else
 #define PAM_CONST const
