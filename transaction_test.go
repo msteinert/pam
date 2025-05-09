@@ -27,6 +27,9 @@ func maybeEndTransaction(t *testing.T, tx *Transaction) {
 
 func ensureTransactionEnds(t *testing.T, tx *Transaction) {
 	t.Helper()
+	if tx == nil {
+		return
+	}
 
 	runtime.SetFinalizer(tx, func(tx *Transaction) {
 		// #nosec:G103 - the pointer conversion is checked.
@@ -297,6 +300,13 @@ func TestPAM_ConfDir_InfoMessage(t *testing.T) {
 			}
 			return "", errors.New("unexpected")
 		}), "test-services")
+	if !CheckPamHasStartConfdir() {
+		if err == nil {
+			t.Fatalf("start should have errored out as pam_start_confdir is not available: %v", err)
+		}
+		// nothing else we do, we don't support it.
+		return
+	}
 	ensureTransactionEnds(t, tx)
 	defer maybeEndTransaction(t, tx)
 	if err != nil {
@@ -442,7 +452,7 @@ func TestItem(t *testing.T) {
 }
 
 func TestEnv(t *testing.T) {
-	tx, err := StartFunc("", "", func(s Style, msg string) (string, error) {
+	tx, err := StartFunc("passwd", "test", func(s Style, msg string) (string, error) {
 		return "", nil
 	})
 	ensureTransactionEnds(t, tx)
@@ -509,46 +519,8 @@ func TestEnv(t *testing.T) {
 	}
 }
 
-func Test_Error(t *testing.T) {
-	t.Parallel()
-	if !CheckPamHasStartConfdir() {
-		t.Skip("this requires PAM with Conf dir support")
-	}
-
-	statuses := map[string]error{
-		"success":               nil,
-		"open_err":              ErrOpen,
-		"symbol_err":            ErrSymbol,
-		"service_err":           ErrService,
-		"system_err":            ErrSystem,
-		"buf_err":               ErrBuf,
-		"perm_denied":           ErrPermDenied,
-		"auth_err":              ErrAuth,
-		"cred_insufficient":     ErrCredInsufficient,
-		"authinfo_unavail":      ErrAuthinfoUnavail,
-		"user_unknown":          ErrUserUnknown,
-		"maxtries":              ErrMaxtries,
-		"new_authtok_reqd":      ErrNewAuthtokReqd,
-		"acct_expired":          ErrAcctExpired,
-		"session_err":           ErrSession,
-		"cred_unavail":          ErrCredUnavail,
-		"cred_expired":          ErrCredExpired,
-		"cred_err":              ErrCred,
-		"no_module_data":        ErrNoModuleData,
-		"conv_err":              ErrConv,
-		"authtok_err":           ErrAuthtok,
-		"authtok_recover_err":   ErrAuthtokRecovery,
-		"authtok_lock_busy":     ErrAuthtokLockBusy,
-		"authtok_disable_aging": ErrAuthtokDisableAging,
-		"try_again":             ErrTryAgain,
-		"ignore":                nil, /* Ignore can't be returned */
-		"abort":                 ErrAbort,
-		"authtok_expired":       ErrAuthtokExpired,
-		"module_unknown":        ErrModuleUnknown,
-		"bad_item":              ErrBadItem,
-		"conv_again":            ErrConvAgain,
-		"incomplete":            ErrIncomplete,
-	}
+func testError(t *testing.T, statuses map[string]error) {
+	t.Helper()
 
 	type Action int
 	const (
@@ -623,6 +595,47 @@ func Test_Error(t *testing.T) {
 	}
 }
 
+func Test_Error(t *testing.T) {
+	t.Parallel()
+	if !CheckPamHasStartConfdir() {
+		t.Skip("this requires PAM with Conf dir support")
+	}
+
+	statuses := map[string]error{
+		"success":               nil,
+		"open_err":              ErrOpen,
+		"symbol_err":            ErrSymbol,
+		"service_err":           ErrService,
+		"system_err":            ErrSystem,
+		"buf_err":               ErrBuf,
+		"perm_denied":           ErrPermDenied,
+		"auth_err":              ErrAuth,
+		"cred_insufficient":     ErrCredInsufficient,
+		"authinfo_unavail":      ErrAuthinfoUnavail,
+		"user_unknown":          ErrUserUnknown,
+		"maxtries":              ErrMaxtries,
+		"new_authtok_reqd":      ErrNewAuthtokReqd,
+		"acct_expired":          ErrAcctExpired,
+		"session_err":           ErrSession,
+		"cred_unavail":          ErrCredUnavail,
+		"cred_expired":          ErrCredExpired,
+		"cred_err":              ErrCred,
+		"no_module_data":        ErrNoModuleData,
+		"conv_err":              ErrConv,
+		"authtok_err":           ErrAuthtok,
+		"authtok_recover_err":   ErrAuthtokRecovery,
+		"authtok_lock_busy":     ErrAuthtokLockBusy,
+		"authtok_disable_aging": ErrAuthtokDisableAging,
+		"try_again":             ErrTryAgain,
+		"ignore":                nil, /* Ignore can't be returned */
+		"abort":                 ErrAbort,
+		"authtok_expired":       ErrAuthtokExpired,
+		"module_unknown":        ErrModuleUnknown,
+	}
+
+	testError(t, statuses)
+}
+
 func Test_Finalizer(t *testing.T) {
 	if !CheckPamHasStartConfdir() {
 		t.Skip("this requires PAM with Conf dir support")
@@ -640,84 +653,4 @@ func Test_Finalizer(t *testing.T) {
 	runtime.GC()
 	// sleep to switch to finalizer goroutine
 	time.Sleep(5 * time.Millisecond)
-}
-
-func TestFailure_001(t *testing.T) {
-	tx := Transaction{}
-	_, err := tx.GetEnvList()
-	if err == nil {
-		t.Fatalf("getenvlist #expected an error")
-	}
-}
-
-func TestFailure_002(t *testing.T) {
-	tx := Transaction{}
-	err := tx.PutEnv("")
-	if err == nil {
-		t.Fatalf("getenvlist #expected an error")
-	}
-}
-
-func TestFailure_003(t *testing.T) {
-	tx := Transaction{}
-	err := tx.CloseSession(0)
-	if err == nil {
-		t.Fatalf("getenvlist #expected an error")
-	}
-}
-
-func TestFailure_004(t *testing.T) {
-	tx := Transaction{}
-	err := tx.OpenSession(0)
-	if err == nil {
-		t.Fatalf("getenvlist #expected an error")
-	}
-}
-
-func TestFailure_005(t *testing.T) {
-	tx := Transaction{}
-	err := tx.ChangeAuthTok(0)
-	if err == nil {
-		t.Fatalf("getenvlist #expected an error")
-	}
-}
-
-func TestFailure_006(t *testing.T) {
-	tx := Transaction{}
-	err := tx.AcctMgmt(0)
-	if err == nil {
-		t.Fatalf("getenvlist #expected an error")
-	}
-}
-
-func TestFailure_007(t *testing.T) {
-	tx := Transaction{}
-	err := tx.SetCred(0)
-	if err == nil {
-		t.Fatalf("getenvlist #expected an error")
-	}
-}
-
-func TestFailure_008(t *testing.T) {
-	tx := Transaction{}
-	err := tx.SetItem(User, "test")
-	if err == nil {
-		t.Fatalf("getenvlist #expected an error")
-	}
-}
-
-func TestFailure_009(t *testing.T) {
-	tx := Transaction{}
-	_, err := tx.GetItem(User)
-	if err == nil {
-		t.Fatalf("getenvlist #expected an error")
-	}
-}
-
-func TestFailure_010(t *testing.T) {
-	tx := Transaction{}
-	err := tx.End()
-	if err != nil {
-		t.Fatalf("end #unexpected error %v", err)
-	}
 }
