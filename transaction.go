@@ -1,30 +1,35 @@
 // Package pam provides a wrapper for the PAM application API.
 package pam
 
-//#cgo CFLAGS: -Wall -Wno-unused-variable -std=c99
-//#cgo LDFLAGS: -lpam
-//
-//#include <security/pam_appl.h>
-//#include <stdlib.h>
-//#include <stdint.h>
-//
-//#ifdef PAM_BINARY_PROMPT
-//#define BINARY_PROMPT_IS_SUPPORTED 1
-//#else
-//#include <limits.h>
-//#define PAM_BINARY_PROMPT INT_MAX
-//#define BINARY_PROMPT_IS_SUPPORTED 0
-//#endif
-//
-//void init_pam_conv(struct pam_conv *conv, uintptr_t);
-//int pam_start_confdir(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh) __attribute__ ((weak));
-//int check_pam_start_confdir(void);
+/*
+#cgo CFLAGS: -Wall -Wno-unused-variable -std=c99
+#cgo LDFLAGS: -ldl -lpam
+
+#include <dlfcn.h>
+#include <security/pam_appl.h>
+#include <stdlib.h>
+#include <stdint.h>
+
+#ifdef PAM_BINARY_PROMPT
+#define BINARY_PROMPT_IS_SUPPORTED 1
+#else
+#include <limits.h>
+#define PAM_BINARY_PROMPT INT_MAX
+#define BINARY_PROMPT_IS_SUPPORTED 0
+#endif
+
+void init_pam_conv(struct pam_conv *conv, uintptr_t);
+
+typedef int (*pam_start_confdir_fn)(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh);
+int pam_start_confdir_wrapper(pam_start_confdir_fn fn, const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh);
+*/
 import "C"
 
 import (
 	"fmt"
 	"runtime/cgo"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 )
@@ -227,7 +232,7 @@ func start(service, user string, handler ConversationHandler, confDir string) (*
 	} else {
 		c := C.CString(confDir)
 		defer C.free(unsafe.Pointer(c))
-		err = t.handlePamStatus(C.pam_start_confdir(s, u, t.conv, c, &t.handle))
+		err = t.handlePamStatus(C.pam_start_confdir_wrapper(pamStartConfdirPtr, s, u, t.conv, c, &t.handle))
 	}
 	if err != nil {
 		var _ = t.End()
@@ -257,14 +262,6 @@ const (
 	Ruser Item = C.PAM_RUSER
 	// UserPrompt is the string use to prompt for a username.
 	UserPrompt Item = C.PAM_USER_PROMPT
-	// FailDelay is the app supplied function to override failure delays.
-	FailDelay Item = C.PAM_FAIL_DELAY
-	// Xdisplay is the X display name
-	Xdisplay Item = C.PAM_XDISPLAY
-	// Xauthdata is the X server authentication data.
-	Xauthdata Item = C.PAM_XAUTHDATA
-	// AuthtokType is the type for pam_get_authtok
-	AuthtokType Item = C.PAM_AUTHTOK_TYPE
 )
 
 // SetItem sets a PAM information item.
@@ -401,9 +398,15 @@ func (t *Transaction) GetEnvList() (map[string]string, error) {
 	return env, nil
 }
 
+var once sync.Once
+var pamStartConfdirPtr C.pam_start_confdir_fn
+
 // CheckPamHasStartConfdir return if pam on system supports pam_system_confdir
 func CheckPamHasStartConfdir() bool {
-	return C.check_pam_start_confdir() == 0
+	once.Do(func() {
+		pamStartConfdirPtr = C.pam_start_confdir_fn(C.dlsym(C.RTLD_NEXT, C.CString("pam_start_confdir")))
+	})
+	return pamStartConfdirPtr != nil
 }
 
 // CheckPamHasBinaryProtocol return if pam on system supports PAM_BINARY_PROMPT
