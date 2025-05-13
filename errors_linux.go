@@ -7,7 +7,7 @@ package pam
 */
 import "C"
 
-// Pam Return types
+// Various errors returned by PAM.
 const (
 	// ErrBadItem indicates a bad item passed to pam_*_item().
 	ErrBadItem Error = C.PAM_BAD_ITEM

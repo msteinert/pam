@@ -5,10 +5,10 @@ package pam
 */
 import "C"
 
-// Error is the Type for PAM Return types
+// Error represents a PAM error.
 type Error int
 
-// Pam Return types
+// Various errors returned by PAM.
 const (
 	// OpenErr indicates a dlopen() failure when dynamically loading a
 	// service module.
