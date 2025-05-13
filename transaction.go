@@ -21,6 +21,7 @@ package pam
 void init_pam_conv(struct pam_conv *conv, uintptr_t);
 
 typedef int (*pam_start_confdir_fn)(const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh);
+
 int pam_start_confdir_wrapper(pam_start_confdir_fn fn, const char *service_name, const char *user, const struct pam_conv *pam_conversation, const char *confdir, pam_handle_t **pamh);
 */
 import "C"
@@ -54,8 +55,8 @@ const (
 	// TextInfo indicates the conversation handler should display some
 	// text.
 	TextInfo Style = C.PAM_TEXT_INFO
-	// BinaryPrompt indicates the conversation handler that should implement
-	// the private binary protocol
+	// BinaryPrompt indicates the conversation handler that should
+	// implement the private binary protocol.
 	BinaryPrompt Style = C.PAM_BINARY_PROMPT
 )
 
@@ -68,9 +69,9 @@ type ConversationHandler interface {
 	RespondPAM(Style, string) (string, error)
 }
 
-// BinaryPointer exposes the type used for the data in a binary conversation
-// it represents a pointer to data that is produced by the module and that
-// must be parsed depending on the protocol in use
+// BinaryPointer exposes the type used for the data in a binary conversation.
+// It represents a pointer to data that is produced by the module and must be
+// parsed depending on the protocol in use.
 type BinaryPointer unsafe.Pointer
 
 // BinaryConversationHandler is an interface for objects that can be used as
@@ -150,7 +151,8 @@ func (t *Transaction) End() error {
 		C.int(t.lastStatus.Load())))
 }
 
-// Allows to call pam functions managing return status
+// handlePamStatus stores the last error returned by PAM and converts it to a
+// Go error.
 func (t *Transaction) handlePamStatus(cStatus C.int) error {
 	t.lastStatus.Store(int32(cStatus))
 	if status := Error(cStatus); status != success {
@@ -311,7 +313,7 @@ const (
 
 // Authenticate is used to authenticate the user.
 //
-// Valid flags: Silent, DisallowNullAuthtok
+// Valid flags: Silent, DisallowNullAuthtok.
 func (t *Transaction) Authenticate(f Flags) error {
 	return t.handlePamStatus(C.pam_authenticate(t.handle, C.int(f)))
 }
@@ -319,35 +321,35 @@ func (t *Transaction) Authenticate(f Flags) error {
 // SetCred is used to establish, maintain and delete the credentials of a
 // user.
 //
-// Valid flags: EstablishCred, DeleteCred, ReinitializeCred, RefreshCred
+// Valid flags: EstablishCred, DeleteCred, ReinitializeCred, RefreshCred.
 func (t *Transaction) SetCred(f Flags) error {
 	return t.handlePamStatus(C.pam_setcred(t.handle, C.int(f)))
 }
 
 // AcctMgmt is used to determine if the user's account is valid.
 //
-// Valid flags: Silent, DisallowNullAuthtok
+// Valid flags: Silent, DisallowNullAuthtok.
 func (t *Transaction) AcctMgmt(f Flags) error {
 	return t.handlePamStatus(C.pam_acct_mgmt(t.handle, C.int(f)))
 }
 
 // ChangeAuthTok is used to change the authentication token.
 //
-// Valid flags: Silent, ChangeExpiredAuthtok
+// Valid flags: Silent, ChangeExpiredAuthtok.
 func (t *Transaction) ChangeAuthTok(f Flags) error {
 	return t.handlePamStatus(C.pam_chauthtok(t.handle, C.int(f)))
 }
 
 // OpenSession sets up a user session for an authenticated user.
 //
-// Valid flags: Slient
+// Valid flags: Silent.
 func (t *Transaction) OpenSession(f Flags) error {
 	return t.handlePamStatus(C.pam_open_session(t.handle, C.int(f)))
 }
 
 // CloseSession closes a previously opened session.
 //
-// Valid flags: Silent
+// Valid flags: Silent.
 func (t *Transaction) CloseSession(f Flags) error {
 	return t.handlePamStatus(C.pam_close_session(t.handle, C.int(f)))
 }
@@ -401,7 +403,7 @@ func (t *Transaction) GetEnvList() (map[string]string, error) {
 var once sync.Once
 var pamStartConfdirPtr C.pam_start_confdir_fn
 
-// CheckPamHasStartConfdir return if pam on system supports pam_system_confdir
+// CheckPamHasStartConfdir reports whether PAM supports pam_system_confdir.
 func CheckPamHasStartConfdir() bool {
 	once.Do(func() {
 		pamStartConfdirPtr = C.pam_start_confdir_fn(C.dlsym(C.RTLD_NEXT, C.CString("pam_start_confdir")))
@@ -409,7 +411,7 @@ func CheckPamHasStartConfdir() bool {
 	return pamStartConfdirPtr != nil
 }
 
-// CheckPamHasBinaryProtocol return if pam on system supports PAM_BINARY_PROMPT
+// CheckPamHasBinaryProtocol reports whether PAM supports PAM_BINARY_PROMPT.
 func CheckPamHasBinaryProtocol() bool {
 	return C.BINARY_PROMPT_IS_SUPPORTED != 0
 }
